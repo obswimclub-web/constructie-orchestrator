@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id             String   @id @db.Uuid
+  slug           String   @unique
+  name           String
+  lifecycleState String   @default("ACTIVE") @map("lifecycle_state")
+  revision       Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  events    ProjectEvent[]
+  workItems WorkItem[]
+  attempts  Attempt[]
+
+  @@map("projects")
+}
+
+model ProjectEvent {
+  id                String   @id @db.Uuid
+  projectId         String   @map("project_id") @db.Uuid
+  eventType         String   @map("event_type")
+  aggregateType     String   @map("aggregate_type")
+  aggregateId       String   @map("aggregate_id") @db.Uuid
+  aggregateRevision Int      @map("aggregate_revision")
+  actorType         String   @map("actor_type")
+  actorId           String   @map("actor_id")
+  correlationId     String   @map("correlation_id")
+  causationId       String?  @map("causation_id")
+  schemaVersion     Int      @default(1) @map("schema_version")
+  payload           Json
+  occurredAt        DateTime @map("occurred_at")
+  persistedAt       DateTime @default(now()) @map("persisted_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([aggregateId, aggregateRevision, eventType])
+  @@index([projectId, persistedAt])
+  @@index([correlationId])
+  @@map("project_events")
+}
+
+model OutboxEvent {
+  id            String   @id @db.Uuid
+  projectId     String   @map("project_id") @db.Uuid
+  eventType     String   @map("event_type")
+  aggregateType String   @map("aggregate_type")
+  aggregateId   String   @map("aggregate_id") @db.Uuid
+  payload       Json
+  correlationId String   @map("correlation_id")
+  status        String   @default("PENDING")
+  availableAt   DateTime @default(now()) @map("available_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  publishedAt   DateTime? @map("published_at")
+  attempts      Int      @default(0)
+
+  @@index([status, availableAt])
+  @@index([projectId])
+  @@map("outbox_events")
+}
+
+model WorkItem {
+  id               String   @id @db.Uuid
+  projectId        String   @map("project_id") @db.Uuid
+  parentId         String?  @map("parent_id") @db.Uuid
+  type             String
+  objective        String
+  lifecycleState   String   @default("DRAFT") @map("lifecycle_state")
+  revision         Int      @default(1)
+  currentAttemptId String?  @map("current_attempt_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  attempts Attempt[]
+
+  @@index([projectId, lifecycleState])
+  @@index([parentId])
+  @@map("work_items")
+}
+
+model Attempt {
+  id                 String   @id @db.Uuid
+  projectId          String   @map("project_id") @db.Uuid
+  workItemId         String   @map("work_item_id") @db.Uuid
+  attemptNumber      Int      @map("attempt_number")
+  state              String   @default("NOT_STARTED")
+  active             Boolean  @default(true)
+  workPackageVersion Int      @map("work_package_version")
+  agentRunId         String?   @map("agent_run_id")
+  agentAdapterId     String?   @map("agent_adapter_id")
+  startedAt          DateTime? @map("started_at")
+  endedAt            DateTime? @map("ended_at")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+
+  @@unique([workItemId, attemptNumber])
+  @@index([projectId, state])
+  @@index([workItemId, active])
+  @@map("attempts")
+}
+
+model ArtifactRecord {
+  id         String   @id @db.Uuid
+  projectId  String   @map("project_id") @db.Uuid
+  workItemId String   @map("work_item_id") @db.Uuid
+  attemptId  String?  @map("attempt_id") @db.Uuid
+  kind       String
+  uri        String
+  hash       String?
+  producedBy String   @map("produced_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([projectId, workItemId])
+  @@map("artifact_records")
+}
+
+model EvidenceRecord {
+  id          String   @id @db.Uuid
+  projectId   String   @map("project_id") @db.Uuid
+  workItemId  String   @map("work_item_id") @db.Uuid
+  artifactId  String?  @map("artifact_id") @db.Uuid
+  claim       String
+  sourceType  String   @map("source_type")
+  sourceRef   String   @map("source_ref")
+  currentness String   @default("CURRENT")
+  observedAt  DateTime @map("observed_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([projectId, workItemId, currentness])
+  @@index([artifactId])
+  @@map("evidence_records")
+}
+
+model VerificationRecord {
+  id               String   @id @db.Uuid
+  projectId        String   @map("project_id") @db.Uuid
+  workItemId       String   @map("work_item_id") @db.Uuid
+  verificationType String   @map("verification_type")
+  status           String
+  evidenceIds      Json     @map("evidence_ids")
+  verifierRef      String   @map("verifier_ref")
+  verifiedAt       DateTime @map("verified_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([projectId, workItemId, status])
+  @@map("verification_records")
+}
+
+model CompletionDecision {
+  id                        String   @id @db.Uuid
+  projectId                 String   @map("project_id") @db.Uuid
+  completionObjectRef       String   @map("completion_object_ref")
+  state                     String
+  evaluatedProjectRevision  Int      @map("evaluated_project_revision")
+  evaluatedWorkItemId       String   @map("evaluated_work_item_id") @db.Uuid
+  evaluatedWorkItemRevision Int      @map("evaluated_work_item_revision")
+  verificationIds           Json     @map("verification_ids")
+  evidenceIds               Json     @map("evidence_ids")
+  reconciliationRef         String   @map("reconciliation_ref")
+  rationaleCodes            Json     @map("rationale_codes")
+  decidedAt                 DateTime @map("decided_at")
+  createdAt                 DateTime @default(now()) @map("created_at")
+
+  @@index([projectId, completionObjectRef, decidedAt])
+  @@index([projectId, state])
+  @@map("completion_decisions")
+}

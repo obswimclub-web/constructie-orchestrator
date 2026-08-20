@@ -1,0 +1,22 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/domain" },
+    { "path": "./packages/contracts" },
+    { "path": "./packages/persistence" },
+    { "path": "./packages/orchestrator" },
+    { "path": "./packages/workflow" },
+    { "path": "./packages/agents" },
+    { "path": "./packages/tools" },
+    { "path": "./packages/evidence" },
+    { "path": "./packages/reconciliation" },
+    { "path": "./packages/completion" },
+    { "path": "./packages/recovery" },
+    { "path": "./packages/policy" },
+    { "path": "./packages/observability" },
+    { "path": "./packages/testkit" },
+    { "path": "./apps/api" },
+    { "path": "./apps/worker" },
+    { "path": "./apps/web" }
+  ]
+}

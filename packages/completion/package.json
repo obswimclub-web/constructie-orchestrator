@@ -1,0 +1,14 @@
+{
+  "name": "@co/completion",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "@co/domain": "workspace:*",
+    "@co/evidence": "workspace:*",
+    "@co/reconciliation": "workspace:*"
+  },
+  "scripts": { "build": "tsc -b", "typecheck": "tsc -b --pretty false", "test": "vitest run" }
+}
