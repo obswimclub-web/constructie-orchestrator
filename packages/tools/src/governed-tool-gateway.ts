@@ -64,7 +64,7 @@ export class GovernedToolGateway implements ToolGateway {
     let decisionAllow: boolean;
     let reasonCode: string;
     let actionId: string | undefined;
-    let grantedByAuthority: OwnerAuthorityToken | undefined;
+    let grantedByAuthorityId: string | undefined;
     let policyForAuthorized: {
       requestId: string;
       decision: 'ALLOW';
@@ -80,7 +80,7 @@ export class GovernedToolGateway implements ToolGateway {
 
       decisionAllow = actionDecision.decision === 'ALLOW';
       reasonCode = actionDecision.policyRule;
-      grantedByAuthority = actionDecision.grantedByAuthority;
+      grantedByAuthorityId = actionDecision.grantedByAuthorityId;
 
       this.auditLedger?.recordProposed({
         actionId: actionRequest.actionId,
@@ -138,8 +138,8 @@ export class GovernedToolGateway implements ToolGateway {
     if (!adapter) throw new ToolNotRegisteredError(request.toolId);
 
     // ALLOW: reserve grant before adapter execution (if a token authorized the action)
-    if (actionId && grantedByAuthority && this.grantConsumer) {
-      this.grantConsumer.reserveGrant(grantedByAuthority, actionId);
+    if (actionId && grantedByAuthorityId && this.grantConsumer) {
+      this.grantConsumer.reserveGrant(grantedByAuthorityId, actionId);
     }
 
     // ALLOW: invoke ToolAdapter
@@ -150,8 +150,8 @@ export class GovernedToolGateway implements ToolGateway {
       result = await adapter.executeAuthorized(authorized);
     } catch (err) {
       // Execution threw — treat as TIMED_OUT / ambiguous failure
-      if (actionId && grantedByAuthority && this.grantConsumer) {
-        this.grantConsumer.requireReconciliation(grantedByAuthority, actionId);
+      if (actionId && grantedByAuthorityId && this.grantConsumer) {
+        this.grantConsumer.requireReconciliation(grantedByAuthorityId, actionId);
       }
       if (actionId) this.auditLedger?.recordExecuted(actionId, 'FAILED');
       throw err;
@@ -160,21 +160,21 @@ export class GovernedToolGateway implements ToolGateway {
     const parsed = ToolExecutionResultSchema.parse(result);
 
     // Post-execution grant lifecycle management
-    if (actionId && grantedByAuthority && this.grantConsumer) {
+    if (actionId && grantedByAuthorityId && this.grantConsumer) {
       switch (parsed.status) {
         case 'SUCCEEDED':
-          this.grantConsumer.consumeGrant(grantedByAuthority, actionId);
+          this.grantConsumer.consumeGrant(grantedByAuthorityId, actionId);
           break;
         case 'CANCELLED':
           // Proven not executed — release for retry
-          this.grantConsumer.releaseGrantForRetry(grantedByAuthority, actionId);
+          this.grantConsumer.releaseGrantForRetry(grantedByAuthorityId, actionId);
           break;
         case 'TIMED_OUT':
         case 'FAILED':
         case 'UNKNOWN':
         default:
           // Ambiguous — require reconciliation before retry is authorized
-          this.grantConsumer.requireReconciliation(grantedByAuthority, actionId);
+          this.grantConsumer.requireReconciliation(grantedByAuthorityId, actionId);
           break;
       }
     }
@@ -223,6 +223,25 @@ function bridgeToActionRequest(request: ToolExecutionRequest): ActionRequest {
         ? extractHttpMethodFromOperation(request.operationId)
         : undefined;
 
+  const targetFilePaths: string[] = [];
+
+  if (Array.isArray(params['filePaths'])) {
+    targetFilePaths.push(...(params['filePaths'] as string[]));
+  } else if (Array.isArray(params['requestedFilePaths'])) {
+    targetFilePaths.push(...(params['requestedFilePaths'] as string[]));
+  } else if (typeof params['path'] === 'string') {
+    targetFilePaths.push(params['path']);
+  } else if (typeof params['file'] === 'string') {
+    targetFilePaths.push(params['file']);
+  }
+
+  if (request.targetResource && request.targetResource.startsWith('file://')) {
+    const p = request.targetResource.replace('file://', '');
+    if (!targetFilePaths.includes(p)) targetFilePaths.push(p);
+  } else if (request.targetResource && request.targetResource.includes('/') && !request.targetResource.includes('://')) {
+    if (!targetFilePaths.includes(request.targetResource)) targetFilePaths.push(request.targetResource);
+  }
+
   const base: ActionRequest = {
     actionId: randomUUID(),
     taskId: request.workItemRef,
@@ -235,17 +254,16 @@ function bridgeToActionRequest(request: ToolExecutionRequest): ActionRequest {
     parameters: request.parameters,
     authorityContextRef: request.authorityContextRef,
     correlationId: request.correlationId,
+    targetFilePaths,
   };
   if (typeof params['command'] === 'string') Object.assign(base, { command: params['command'] });
   if (Array.isArray(params['args'])) Object.assign(base, { args: params['args'] as string[] });
   if (httpMethod !== undefined) Object.assign(base, { httpMethod });
   if (gitOp !== undefined) Object.assign(base, { gitOperation: gitOp });
-  if (Array.isArray(params['filePaths'])) {
-    Object.assign(base, { requestedFilePaths: params['filePaths'] as string[] });
-  } else if (typeof params['path'] === 'string') {
-    Object.assign(base, { requestedFilePaths: [params['path']] });
+  if (typeof params['generatedContent'] === 'string') {
+    Object.assign(base, { generatedContent: params['generatedContent'] });
   }
-  if (typeof params['content'] === 'string') Object.assign(base, { generatedContent: params['content'] });
+
   return base;
 }
 

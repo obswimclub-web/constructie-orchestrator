@@ -1,3 +1,5 @@
+import { MinimalWorkflowEngine, type WorkflowWorkStore } from '../../packages/workflow/src/index.js';
+import { type Attempt, type AttemptState, type WorkItem, type WorkItemLifecycleState } from '@co/domain';
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { createRuntimeComposition } from '../../packages/orchestrator/src/index.js';
@@ -98,5 +100,67 @@ describe('Policy Enforcement E2E (Full Composition Root)', () => {
     const grant = comp.policyView.activeAuthorities.find(a => a.token === 'OWNER_COMMIT_APPROVED');
     expect(grant).toBeDefined();
     expect(grant?.status).toBe('ACTIVE');
+  });
+
+  it('E2E-2: Tool denial propagated to MinimalWorkflowEngine AgentRunResult', async () => {
+    const taskId = 'task-e2e-002';
+    const comp = createRuntimeComposition({ taskId, initialGate: 'COMMIT', environment: 'LOCAL' });
+
+    const mockOpenAIClient = {
+      chat: { completions: { create: vi.fn().mockResolvedValue({
+        id: 'mock-response-2', model: 'gpt-4o', usage: { prompt_tokens: 10, completion_tokens: 20 },
+        choices: [{ message: { content: "\n```json\n{\"summary\": \"Committing changes\", \"artifacts\": [], \"toolProposals\": [{\"toolId\": \"git\", \"operationId\": \"git.commit\", \"targetResource\": \"repo://local\", \"environment\": \"LOCAL\", \"parameters\": { \"subcommand\": \"commit\" }}]}\n```\n" } }]
+      })}}
+    };
+    (comp.codexAdapter as any).openaiClientFactory = () => mockOpenAIClient;
+
+    const workPackage: any = { workPackageId: 'wp-2', workItemId: taskId, projectId: 'proj-2', objective: 'Commit', authorityContextRef: 'auth://2', version: 1 };
+
+    class FakeStore implements WorkflowWorkStore {
+      workItem = { id: taskId, projectId: 'proj-2', lifecycleState: 'READY', targetGate: 'COMMIT', revision: 1, currentAttemptId: null, createdAt: new Date(), updatedAt: new Date(), requiredCapabilities: [] };
+      attempt = null;
+      async startAttempt(input) {
+        this.attempt = input.attempt;
+        this.workItem.lifecycleState = 'ASSIGNED';
+        return { workItem: this.workItem, attempt: this.attempt };
+      }
+      async bindAgentRun(input) { return this.attempt; }
+      async transitionAttempt(input) {
+        this.attempt.state = input.to;
+        return this.attempt;
+      }
+      async transitionWorkItem(input) {
+        this.workItem.lifecycleState = input.to;
+        return this.workItem;
+      }
+    }
+
+    const store = new FakeStore();
+    const engine = new MinimalWorkflowEngine(store);
+
+    process.env.OPENAI_API_KEY = 'test-key';
+
+        const origExecute = comp.codexAdapter.execute.bind(comp.codexAdapter);
+    comp.codexAdapter.execute = async (wp, ctx) => {
+       ctx.secretRefs = ['OPENAI_API_KEY'];
+       const run = await origExecute(wp, ctx);
+       await new Promise(r => setTimeout(r, 100));
+       return run;
+    };
+
+    const result = await engine.execute({
+      workItem: store.workItem,
+      workPackage,
+      adapter: comp.codexAdapter,
+      correlationId: 'corr-2',
+      workflowRunId: 'wf-2',
+    });
+
+    expect(result.attempt.state).toBe('FAILED');
+    expect(result.workItem.lifecycleState).toBe('REPAIR_REQUIRED');
+
+    const denialEvidence = result.agentResult?.evidence?.find(e => e.type === 'tool_denial');
+    expect(denialEvidence).toBeDefined();
+    expect(denialEvidence?.claimSupported).toContain('OWNER_COMMIT_APPROVED_REQUIRED');
   });
 });

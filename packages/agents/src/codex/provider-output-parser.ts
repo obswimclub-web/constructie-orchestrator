@@ -29,13 +29,38 @@ const ArtifactRefSchema = z.object({
  * ALL fields are required — no partial proposals are accepted.
  * Failing any field → the proposal is dropped and treated as non-executable.
  */
+const ALLOWED_OPERATIONS: Record<string, readonly string[]> = {
+  'git': ['git.add', 'git.commit', 'git.push'],
+  'shell': ['shell.exec'],
+  'sandbox-filesystem': ['filesystem.read', 'filesystem.write'],
+  // Allow mock-tool strictly for testing provider-output-parser if needed, though we can omit it if tests don't need it.
+  // Wait, parser tests use git.push so we're good.
+};
+
 const ToolProposalSchema = z.object({
   toolId:         z.string().min(1),
   operationId:    z.string().min(1),
   targetResource: z.string().min(1),
   environment:    z.enum(['LOCAL', 'TEST', 'STAGING', 'PRODUCTION']),
   parameters:     z.record(z.string(), z.unknown()).default({}),
-}).strict();
+}).strict().superRefine((data, ctx) => {
+  const allowedOps = ALLOWED_OPERATIONS[data.toolId];
+  if (!allowedOps) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `UNKNOWN_TOOL_REJECTED`,
+      path: ['toolId'],
+    });
+    return;
+  }
+  if (!allowedOps.includes(data.operationId)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `UNSUPPORTED_TOOL_OPERATION_COMBINATION_REJECTED`,
+      path: ['operationId'],
+    });
+  }
+});
 
 const StructuredProviderOutputSchema = z.object({
   summary:       z.string(),

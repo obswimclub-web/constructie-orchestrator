@@ -184,7 +184,7 @@ describe('OwnerEventProcessor — grant state machine (ISSUED → ACTIVE → RES
     const actionId = 'action-git-push-001';
 
     // RESERVE before execution
-    grantConsumer.reserveGrant('OWNER_PUSH_APPROVED', actionId);
+    grantConsumer.reserveGrant(processor.readOnlyView.activeAuthorities.find(g => g.token === 'OWNER_PUSH_APPROVED')!.grantId, actionId);
     const reservedGrant = processor.readOnlyView.activeAuthorities.find(a => a.token === 'OWNER_PUSH_APPROVED');
     expect(reservedGrant?.status).toBe('RESERVED');
     expect(reservedGrant?.reservedForActionId).toBe(actionId);
@@ -192,7 +192,7 @@ describe('OwnerEventProcessor — grant state machine (ISSUED → ACTIVE → RES
     expect(processor.readOnlyView.hasAuthority('OWNER_PUSH_APPROVED')).toBe(false);
 
     // CONSUME after success
-    grantConsumer.consumeGrant('OWNER_PUSH_APPROVED', actionId);
+    grantConsumer.consumeGrant(processor.readOnlyView.activeAuthorities.find(g => g.token === 'OWNER_PUSH_APPROVED')!.grantId, actionId);
     const consumedGrant = processor.readOnlyView.activeAuthorities.find(a => a.token === 'OWNER_PUSH_APPROVED');
     expect(consumedGrant?.status).toBe('CONSUMED');
     expect(processor.readOnlyView.hasAuthority('OWNER_PUSH_APPROVED')).toBe(false);
@@ -206,8 +206,8 @@ describe('OwnerEventProcessor — grant state machine (ISSUED → ACTIVE → RES
 
     const grantConsumer = processor.asGrantConsumer();
     const actionId = 'action-timedout-001';
-    grantConsumer.reserveGrant('OWNER_PUSH_APPROVED', actionId);
-    grantConsumer.requireReconciliation('OWNER_PUSH_APPROVED', actionId);
+    grantConsumer.reserveGrant(processor.readOnlyView.activeAuthorities.find(g => g.token === 'OWNER_PUSH_APPROVED')!.grantId, actionId);
+    grantConsumer.requireReconciliation(processor.readOnlyView.activeAuthorities.find(g => g.token === 'OWNER_PUSH_APPROVED')!.grantId, actionId);
 
     const grant = processor.readOnlyView.activeAuthorities.find(a => a.token === 'OWNER_PUSH_APPROVED');
     expect(grant?.status).toBe('RECONCILIATION_REQUIRED');
@@ -223,9 +223,9 @@ describe('OwnerEventProcessor — grant state machine (ISSUED → ACTIVE → RES
 
     const grantConsumer = processor.asGrantConsumer();
     const actionId = 'action-cancelled-001';
-    grantConsumer.reserveGrant('OWNER_COMMIT_APPROVED', actionId);
+    grantConsumer.reserveGrant(processor.readOnlyView.activeAuthorities.find(g => g.token === 'OWNER_COMMIT_APPROVED')!.grantId, actionId);
     // Execution cancelled before side effect
-    grantConsumer.releaseGrantForRetry('OWNER_COMMIT_APPROVED', actionId);
+    grantConsumer.releaseGrantForRetry(processor.readOnlyView.activeAuthorities.find(g => g.token === 'OWNER_COMMIT_APPROVED')!.grantId, actionId);
 
     const grant = processor.readOnlyView.activeAuthorities.find(a => a.token === 'OWNER_COMMIT_APPROVED');
     expect(grant?.status).toBe('ACTIVE');

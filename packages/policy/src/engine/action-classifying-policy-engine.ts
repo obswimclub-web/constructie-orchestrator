@@ -264,11 +264,19 @@ export class ActionClassifyingPolicyEngine implements ActionPolicyEvaluator {
     }
 
     // ── Step 7: Authority token checks ────────────────────────────────────────
-    let grantedByAuthority: OwnerAuthorityToken | undefined;
+    let grantedByAuthorityId: string | undefined;
     for (const cls of classes) {
       const requiredToken = gateRule.requiredTokens[cls as MutationClass];
       if (requiredToken) {
-        if (!this.context.hasAuthority(requiredToken)) {
+        const matchingGrant = this.context.activeAuthorities.find(a =>
+          a.token === requiredToken &&
+          a.status === 'ACTIVE' &&
+          a.taskId === request.taskId &&
+          (!a.boundToGate || a.boundToGate === gate) &&
+          (!a.boundToAction || a.boundToAction === cls)
+        );
+
+        if (!matchingGrant) {
           return {
             actionId: request.actionId,
             decision: 'DENY',
@@ -278,24 +286,59 @@ export class ActionClassifyingPolicyEngine implements ActionPolicyEvaluator {
             triggeringClasses: [cls],
             allClasses: classes,
             reason:
-              `Class '${cls}' in gate '${gate}' requires authority token '${requiredToken}', ` +
+              `Class '${cls}' in gate '${gate}' requires authority token '${requiredToken}' valid for this task/gate/action, ` +
               `which has not been granted. Owner must explicitly authorize this action.`,
           };
         }
-        // Token present — record as the granting authority for the gateway's lifecycle management
-        grantedByAuthority = requiredToken;
+
+        // Determine if this specific action class consumes the grant
+        const consumesGrant =
+          (cls === 'GIT_COMMIT' && requiredToken === 'OWNER_COMMIT_APPROVED') ||
+          (cls === 'GIT_PUSH' && requiredToken === 'OWNER_PUSH_APPROVED') ||
+          (cls === 'DEPLOYMENT' && requiredToken === 'OWNER_DEPLOY_APPROVED');
+
+        if (consumesGrant) {
+          grantedByAuthorityId = matchingGrant.grantId;
+        }
       }
     }
 
     // ── Step 8: File scope enforcement ────────────────────────────────────────
-    if (gateRule.enforceFileScope && request.requestedFilePaths && request.requestedFilePaths.length > 0) {
-      for (const filePath of request.requestedFilePaths) {
-        if (!this.context.isFileApproved(filePath)) {
+
+    // Explicit global deny for blanket git add
+    if (classes.includes('GIT_STAGE')) {
+      const gitArgs = request.args || [];
+      const gitCmd = request.command || '';
+      if (
+        gitArgs.includes('.') || gitArgs.includes('-A') || gitArgs.includes('--all') ||
+        gitCmd.includes('git add .') || gitCmd.includes('git add -A') || gitCmd.includes('git add --all')
+      ) {
+        return this.deny(request, classes, gate,
+          'GLOBAL_DENY_BLANKET_GIT_ADD',
+          `git add ., -A, or --all is globally denied. You must explicitly stage approved files.`
+        );
+      }
+    }
+
+    if (gateRule.enforceFileScope) {
+      if (request.targetFilePaths.length === 0) {
+        // Only require paths if the action actually mutates files
+        const requiresPath = classes.includes('SOURCE_MUTATION') || classes.includes('GIT_STAGE');
+        if (requiresPath) {
           return this.deny(request, classes, gate,
-            'FILE_NOT_IN_APPROVED_SCOPE',
-            `File path '${filePath}' is not in the approved file scope for gate '${gate}'. ` +
-            `Approved files: [${this.context.approvedFiles.join(', ')}].`,
+            'FILE_SCOPE_TARGET_UNRESOLVED',
+            `Action mutates files but no target path could be resolved from the request.`
           );
+        }
+      } else {
+        for (const filePath of request.targetFilePaths) {
+          if (!this.context.isFileApproved(filePath)) {
+            return this.deny(request, classes, gate,
+              'FILE_NOT_IN_APPROVED_SCOPE',
+              `File path '${filePath}' is not in the approved file scope for gate '${gate}'. ` +
+              `Approved files: [${this.context.approvedFiles.join(', ')}].`
+            );
+          }
         }
       }
     }
@@ -306,7 +349,7 @@ export class ActionClassifyingPolicyEngine implements ActionPolicyEvaluator {
       decision: 'ALLOW',
       policyRule: 'GATE_POLICY_ALLOW',
       currentGate: gate,
-      grantedByAuthority,
+      grantedByAuthorityId,
       triggeringClasses: [],
       allClasses: classes,
       reason: `All ${classes.length} class(es) [${classes.join(', ')}] are allowed in gate '${gate}'.`,

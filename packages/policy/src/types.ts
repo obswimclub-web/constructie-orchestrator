@@ -109,6 +109,7 @@ export const AUTHORITY_GRANT_STATUSES = [
 export type AuthorityGrantStatus = (typeof AUTHORITY_GRANT_STATUSES)[number];
 
 export interface AuthorityGrantView {
+  readonly grantId: string;
   readonly token: OwnerAuthorityToken;
   readonly taskId: string;
   readonly status: AuthorityGrantStatus;
@@ -135,27 +136,27 @@ export interface OwnerGrantConsumer {
    * Reserve the grant for a specific actionId before executing.
    * Transitions ACTIVE → RESERVED(actionId).
    */
-  reserveGrant(token: OwnerAuthorityToken, actionId: string): void;
+  reserveGrant(grantId: string, actionId: string): void;
 
   /**
    * Consume the grant after confirmed successful execution.
    * Transitions RESERVED → CONSUMED.
    */
-  consumeGrant(token: OwnerAuthorityToken, actionId: string): void;
+  consumeGrant(grantId: string, actionId: string): void;
 
   /**
    * Release the grant back to ACTIVE for retry after proven-not-executed failure.
    * Transitions RESERVED → ACTIVE.
    * Only valid for: PROVEN_NOT_EXECUTED, FAILED_WITH_CONFIRMED_NO_SIDE_EFFECT, CANCELLED.
    */
-  releaseGrantForRetry(token: OwnerAuthorityToken, actionId: string): void;
+  releaseGrantForRetry(grantId: string, actionId: string): void;
 
   /**
    * Mark the grant as requiring reconciliation after ambiguous execution result.
    * Transitions RESERVED → RECONCILIATION_REQUIRED.
    * Applies to: TIMED_OUT, FAILED (ambiguous), CONNECTION_LOST, UNKNOWN_RESULT.
    */
-  requireReconciliation(token: OwnerAuthorityToken, actionId: string): void;
+  requireReconciliation(grantId: string, actionId: string): void;
 }
 
 // ─── Environment ─────────────────────────────────────────────────────────────
@@ -206,7 +207,7 @@ export interface ActionRequest {
    * the set of file paths the provider intends to modify/stage/commit.
    * Validated against ReadOnlyExecutionContext.approvedFiles.
    */
-  readonly requestedFilePaths?: readonly string[];
+  readonly targetFilePaths: readonly string[];
   /**
    * Content of generated scripts/files (before write).
    * Required for SecretLiteralGuard and AuthCredentialScriptGuard.
@@ -240,10 +241,10 @@ export interface ActionPolicyDecision {
   readonly requiredAuthority?: OwnerAuthorityToken | undefined;
   /**
    * When decision = ALLOW and the ALLOW was granted by a specific authority token,
-   * this field identifies that token. The gateway uses this to manage grant lifecycle
+   * this field identifies the specific grantId. The gateway uses this to manage grant lifecycle
    * (RESERVE before execution, CONSUME after success, REQUIRE_RECONCILIATION on ambiguity).
    */
-  readonly grantedByAuthority?: OwnerAuthorityToken | undefined;
+  readonly grantedByAuthorityId?: string | undefined;
   /** The mutation classes that triggered the denial */
   readonly triggeringClasses: readonly MutationClass[];
   /** Full set of classes the action was classified into */

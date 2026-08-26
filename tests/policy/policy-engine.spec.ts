@@ -53,6 +53,7 @@ function req(overrides: Partial<ActionRequest> = {}): ActionRequest {
     parameters: {},
     authorityContextRef: 'authority://test',
     correlationId: 'corr-1',
+    targetFilePaths: [],
     ...overrides,
   };
 }
@@ -173,10 +174,10 @@ describe('ActionClassifyingPolicyEngine — 14 Synterra synthetic qualification 
     const decision = await engine.evaluate(req({
       tool: 'git', operation: 'git.add', gitOperation: 'add',
       args: ['approved/file.ts'], resource: 'git://local',
-      requestedFilePaths: ['approved/file.ts'],
+      targetFilePaths: ['approved/file.ts'],
     }));
     expect(decision.decision).toBe('ALLOW');
-    expect(decision.grantedByAuthority).toBe('OWNER_COMMIT_APPROVED');
+    expect(decision.grantedByAuthorityId).toBeUndefined(); // git add does not consume the commit token
   });
 
   // ── CASE 11: git add of unapproved file in COMMIT gate — DENY ────────────
@@ -190,7 +191,7 @@ describe('ActionClassifyingPolicyEngine — 14 Synterra synthetic qualification 
     const decision = await engine.evaluate(req({
       tool: 'git', operation: 'git.add', gitOperation: 'add',
       args: ['unrelated/file.ts'], resource: 'git://local',
-      requestedFilePaths: ['unrelated/file.ts'],
+      targetFilePaths: ['unrelated/file.ts'],
     }));
     expect(decision.decision).toBe('DENY');
     expect(decision.policyRule).toBe('FILE_NOT_IN_APPROVED_SCOPE');

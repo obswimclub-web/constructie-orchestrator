@@ -149,6 +149,9 @@ export class CodexAdapter implements AgentAdapter {
       });
 
       // Submit each tool proposal through the gateway (policy enforcement point)
+      let runStatus: AgentRunStatus = 'COMPLETED';
+      const denialEvidence: EvidenceRef[] = [];
+
       for (const proposal of structured.toolProposals) {
         const toolRequest = ToolExecutionRequestSchema.parse({
           schemaVersion: TOOL_EXECUTION_REQUEST_SCHEMA_VERSION,
@@ -166,21 +169,30 @@ export class CodexAdapter implements AgentAdapter {
           idempotencyKey: randomUUID(),
           correlationId: ctx.correlationId,
         });
-        // Gateway returns ToolExecutionResult (ALLOW → executed, DENIED → NOT_EXECUTED)
-        // The adapter does not need to inspect the result — denial is enforced at the gateway.
-        await this.gateway.execute(toolRequest);
+
+        const result = await this.gateway.execute(toolRequest);
+        if (result.status === 'DENIED') {
+          runStatus = 'FAILED';
+          denialEvidence.push({
+            type: 'tool_denial',
+            claimSupported: result.summary,
+            sourceRef: toolRequest.requestId,
+          });
+        } else if (result.status === 'FAILED' || result.status === 'TIMED_OUT' || result.status === 'UNKNOWN') {
+          runStatus = 'FAILED';
+        } else if (result.status === 'CANCELLED' && runStatus === 'COMPLETED') {
+          runStatus = 'CANCELLED';
+        }
       }
 
       this.updateState(runId, {
-        status: 'COMPLETED',
+        status: runStatus,
         artifacts: [
           ...structured.artifacts.map(a => ({
             artifactId: randomUUID(),
-            // Cast to known types — parser validates environment, type fields
             type: (a.type as ArtifactRef['type']) || 'PATCH' as const,
             ref: a.ref,
           })),
-          // Always include the raw model response as a fallback artifact
           {
             artifactId: randomUUID(),
             type: 'PATCH' as const,
@@ -193,6 +205,7 @@ export class CodexAdapter implements AgentAdapter {
             claimSupported: response.model,
             sourceRef: response.id,
           },
+          ...denialEvidence,
         ],
         usage: {
           inputUnits: response.usage?.prompt_tokens ?? 0,

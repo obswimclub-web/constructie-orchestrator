@@ -44,10 +44,18 @@ export class TaskMismatchError extends Error {
   }
 }
 
+export class GrantStateError extends Error {
+  public readonly code = 'GRANT_STATE_ERROR';
+  public constructor(grantId: string, expected: string, actual: string) {
+    super(`Grant '${grantId}' state error: expected ${expected}, got ${actual}`);
+    this.name = 'GrantStateError';
+  }
+}
+
 export class GrantNotFoundError extends Error {
   public readonly code = 'GRANT_NOT_FOUND';
-  public constructor(token: OwnerAuthorityToken, actionId?: string) {
-    super(`Grant for token '${token}' not found${actionId ? ` (actionId: ${actionId})` : ''}`);
+  public constructor(id: string, actionId?: string) {
+    super(`Grant '${id}' not found${actionId ? ` (actionId: ${actionId})` : ''}`);
     this.name = 'GrantNotFoundError';
   }
 }
@@ -120,7 +128,8 @@ export class OwnerEventProcessor {
       get environment() { return self._environment; },
       get approvedFiles(): readonly string[] { return [...self._approvedFileScope]; },
       get activeAuthorities(): readonly AuthorityGrantView[] {
-        return [...self._grants.values()].map(g => ({
+        return [...self._grants.entries()].map(([id, g]) => ({
+          grantId: id,
           token: g.token,
           taskId: g.taskId,
           status: g.status,
@@ -150,10 +159,10 @@ export class OwnerEventProcessor {
    */
   public asGrantConsumer(): OwnerGrantConsumer {
     return {
-      reserveGrant:         (token, actionId) => this._reserveGrant(token, actionId),
-      consumeGrant:         (token, actionId) => this._consumeGrant(token, actionId),
-      releaseGrantForRetry: (token, actionId) => this._releaseGrantForRetry(token, actionId),
-      requireReconciliation:(token, actionId) => this._requireReconciliation(token, actionId),
+      reserveGrant:         (grantId, actionId) => this._reserveGrant(grantId, actionId),
+      consumeGrant:         (grantId, actionId) => this._consumeGrant(grantId, actionId),
+      releaseGrantForRetry: (grantId, actionId) => this._releaseGrantForRetry(grantId, actionId),
+      requireReconciliation:(grantId, actionId) => this._requireReconciliation(grantId, actionId),
     };
   }
 
@@ -256,57 +265,54 @@ export class OwnerEventProcessor {
     return false;
   }
 
-  private _findActiveGrant(token: OwnerAuthorityToken): [string, GrantRecord] | undefined {
-    for (const [id, record] of this._grants) {
-      if (record.token === token && record.status === 'ACTIVE') return [id, record];
-    }
-    return undefined;
-  }
 
-  private _findReservedGrant(token: OwnerAuthorityToken, actionId: string): [string, GrantRecord] | undefined {
-    for (const [id, record] of this._grants) {
-      if (record.token === token && record.status === 'RESERVED' && record.reservedForActionId === actionId) {
-        return [id, record];
-      }
-    }
-    return undefined;
-  }
 
   /** ACTIVE → RESERVED(actionId). Called before adapter.executeAuthorized(). */
-  private _reserveGrant(token: OwnerAuthorityToken, actionId: string): void {
-    const entry = this._findActiveGrant(token);
-    if (!entry) throw new GrantNotFoundError(token, actionId);
-    const [id, record] = entry;
+  private _reserveGrant(grantId: string, actionId: string): void {
+    const record = this._grants.get(grantId);
+    if (!record) throw new GrantNotFoundError(grantId, actionId);
+    if (record.token === 'OWNER_IMPLEMENTATION_APPROVED') {
+       this._auditLog.push({ at: new Date(), event: `GRANT_USED(multi):${record.token}:${grantId}:actionId=${actionId}` });
+       return;
+    }
+    if (record.status !== 'ACTIVE') throw new GrantStateError(grantId, 'ACTIVE', record.status);
+
     record.status = 'RESERVED';
     record.reservedForActionId = actionId;
-    this._auditLog.push({ at: new Date(), event: `GRANT_RESERVED:${token}:${id}:actionId=${actionId}` });
+    this._auditLog.push({ at: new Date(), event: `GRANT_RESERVED:${record.token}:${grantId}:actionId=${actionId}` });
   }
 
   /** RESERVED → CONSUMED. Called after confirmed SUCCEEDED execution. */
-  private _consumeGrant(token: OwnerAuthorityToken, actionId: string): void {
-    const entry = this._findReservedGrant(token, actionId);
-    if (!entry) throw new GrantNotFoundError(token, actionId);
-    const [id, record] = entry;
+  private _consumeGrant(grantId: string, actionId: string): void {
+    const record = this._grants.get(grantId);
+    if (!record) throw new GrantNotFoundError(grantId, actionId);
+    if (record.token === 'OWNER_IMPLEMENTATION_APPROVED') return;
+    if (record.status !== 'RESERVED' || record.reservedForActionId !== actionId) {
+       throw new GrantStateError(grantId, 'RESERVED', record.status);
+    }
+
     record.status = 'CONSUMED';
-    this._auditLog.push({ at: new Date(), event: `GRANT_CONSUMED:${token}:${id}:actionId=${actionId}` });
+    this._auditLog.push({ at: new Date(), event: `GRANT_CONSUMED:${record.token}:${grantId}:actionId=${actionId}` });
   }
 
   /** RESERVED → ACTIVE. Called after CANCELLED / PROVEN_NOT_EXECUTED. */
-  private _releaseGrantForRetry(token: OwnerAuthorityToken, actionId: string): void {
-    const entry = this._findReservedGrant(token, actionId);
-    if (!entry) throw new GrantNotFoundError(token, actionId);
-    const [id, record] = entry;
+  private _releaseGrantForRetry(grantId: string, actionId: string): void {
+    const record = this._grants.get(grantId);
+    if (!record) throw new GrantNotFoundError(grantId, actionId);
+    if (record.token === 'OWNER_IMPLEMENTATION_APPROVED') return;
+
     record.status = 'ACTIVE';
     delete record.reservedForActionId;
-    this._auditLog.push({ at: new Date(), event: `GRANT_RELEASED_FOR_RETRY:${token}:${id}:actionId=${actionId}` });
+    this._auditLog.push({ at: new Date(), event: `GRANT_RELEASED_FOR_RETRY:${record.token}:${grantId}:actionId=${actionId}` });
   }
 
   /** RESERVED → RECONCILIATION_REQUIRED. Called after TIMED_OUT / FAILED / UNKNOWN. */
-  private _requireReconciliation(token: OwnerAuthorityToken, actionId: string): void {
-    const entry = this._findReservedGrant(token, actionId);
-    if (!entry) throw new GrantNotFoundError(token, actionId);
-    const [id, record] = entry;
+  private _requireReconciliation(grantId: string, actionId: string): void {
+    const record = this._grants.get(grantId);
+    if (!record) throw new GrantNotFoundError(grantId, actionId);
+    if (record.token === 'OWNER_IMPLEMENTATION_APPROVED') return;
+
     record.status = 'RECONCILIATION_REQUIRED';
-    this._auditLog.push({ at: new Date(), event: `GRANT_RECONCILIATION_REQUIRED:${token}:${id}:actionId=${actionId}` });
+    this._auditLog.push({ at: new Date(), event: `GRANT_RECONCILIATION_REQUIRED:${record.token}:${grantId}:actionId=${actionId}` });
   }
 }
