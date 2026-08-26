@@ -22,7 +22,7 @@ export class MockToolAdapter implements ToolAdapter {
       artifacts: [],
       evidenceCandidates: [],
       sideEffects: [],
-    } as const;
+    };
 
     switch (this.scenario) {
       case 'SUCCESS':

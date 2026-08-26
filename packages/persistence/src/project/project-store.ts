@@ -71,7 +71,7 @@ export class ProjectStore {
           correlationId: input.event.correlationId,
           causationId: input.event.causationId,
           schemaVersion: input.event.schemaVersion,
-          payload: input.event.payload,
+          payload: input.event.payload as any,
           occurredAt: input.event.occurredAt,
         },
       });
@@ -83,7 +83,7 @@ export class ProjectStore {
           eventType: input.event.eventType,
           aggregateType: input.event.aggregateType,
           aggregateId: input.event.aggregateId,
-          payload: input.event.payload,
+          payload: input.event.payload as any,
           correlationId: input.event.correlationId,
         },
       });
@@ -134,7 +134,7 @@ export class ProjectStore {
           correlationId: input.event.correlationId,
           causationId: input.event.causationId,
           schemaVersion: input.event.schemaVersion,
-          payload: input.event.payload,
+          payload: input.event.payload as any,
           occurredAt: input.event.occurredAt,
         },
       });
@@ -146,7 +146,7 @@ export class ProjectStore {
           eventType: input.event.eventType,
           aggregateType: input.event.aggregateType,
           aggregateId: input.event.aggregateId,
-          payload: input.event.payload,
+          payload: input.event.payload as any,
           correlationId: input.event.correlationId,
         },
       });
