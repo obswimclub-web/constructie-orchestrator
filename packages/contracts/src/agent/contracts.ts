@@ -66,6 +66,14 @@ export const ArtifactRefSchema = z.object({
   type: z.enum(['PATCH', 'FILE', 'COMMIT', 'BRANCH', 'PR', 'TEST_REPORT', 'BUILD', 'DEPLOYMENT', 'DOCUMENT', 'SCREENSHOT', 'LOG_BUNDLE']),
   ref: z.string().min(1),
 }).strict();
+export type ArtifactRef = z.infer<typeof ArtifactRefSchema>;
+
+export const EvidenceRefSchema = z.object({
+  type: z.string(),
+  claimSupported: z.string(),
+  sourceRef: z.string(),
+}).strict();
+export type EvidenceRef = z.infer<typeof EvidenceRefSchema>;
 
 export const AgentRunResultSchema = z.object({
   schemaVersion: z.literal(AGENT_RESULT_SCHEMA_VERSION),
@@ -75,7 +83,7 @@ export const AgentRunResultSchema = z.object({
   actionsTaken: z.array(z.string()).default([]),
   artifacts: z.array(ArtifactRefSchema).default([]),
   findings: z.array(z.object({ claim: z.string(), severity: z.enum(['CRITICAL','HIGH','MEDIUM','LOW']), evidenceRefs: z.array(z.string()).default([]) })).default([]),
-  evidence: z.array(z.object({ type: z.string(), claimSupported: z.string(), sourceRef: z.string() })).default([]),
+  evidence: z.array(EvidenceRefSchema).default([]),
   unresolvedItems: z.array(z.string()).default([]),
   requestedInputs: z.array(z.string()).default([]),
   sideEffects: z.array(z.string()).default([]),
@@ -98,13 +106,12 @@ export interface AgentCancelRequest { runRef: AgentRunRef; reason: string; }
 export interface AgentCancelResult { runRef: AgentRunRef; status: AgentRunStatus; }
 
 export interface AgentAdapter {
-  identify(): AgentAdapterIdentity;
   capabilities(): Promise<CapabilityProfile>;
-  start(workPackage: WorkPackage, runtimeContext: AgentRuntimeContext): Promise<AgentRunHandle>;
+  execute(workPackage: WorkPackage, runtimeContext: AgentRuntimeContext): Promise<AgentRunHandle>;
   resume(resumeRequest: AgentResumeRequest): Promise<AgentRunHandle>;
-  getStatus(runRef: AgentRunRef): Promise<AgentRunStatus>;
-  getResult(runRef: AgentRunRef): Promise<AgentRunResult>;
   cancel(request: AgentCancelRequest): Promise<AgentCancelResult>;
+  getStatus(runRef: AgentRunRef): Promise<AgentRunStatus>;
+  getArtifacts(runRef: AgentRunRef): Promise<ArtifactRef[]>;
+  getEvidence(runRef: AgentRunRef): Promise<EvidenceRef[]>;
   getUsage(runRef: AgentRunRef): Promise<AgentUsage>;
-  health(): Promise<AdapterHealth>;
 }
