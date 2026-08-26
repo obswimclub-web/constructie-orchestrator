@@ -27,8 +27,8 @@ export class ActiveAttemptExistsError extends Error {
   }
 }
 
-function mapWorkItem(row: any): WorkItem { return row as WorkItem; }
-function mapAttempt(row: any): Attempt { return row as Attempt; }
+function mapWorkItem(row: unknown): WorkItem { return row as WorkItem; }
+function mapAttempt(row: unknown): Attempt { return row as Attempt; }
 
 export class WorkStore {
   public constructor(private readonly prisma: PrismaClient) {}

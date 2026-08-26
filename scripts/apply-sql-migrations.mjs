@@ -1,10 +1,11 @@
+/* global process, console,  */
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl = process.env.DATABASE_;
 if (!databaseUrl) {
-  console.error('DATABASE_URL is required.');
+  console.error('DATABASE_ is required.');
   process.exit(2);
 }
 

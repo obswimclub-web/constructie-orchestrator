@@ -1,3 +1,4 @@
+/* global process, console, URL */
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -22,7 +23,7 @@ let failed = false;
 for (const file of await files(root)) {
   const text = await readFile(file, 'utf8');
   for (const token of forbidden) {
-    if (text.includes(`from '${token}`) || text.includes(`from \"${token}`)) {
+    if (text.includes(`from '${token}`) || text.includes(`from "${token}`)) {
       console.error(`Forbidden domain dependency in ${file}: ${token}`);
       failed = true;
     }

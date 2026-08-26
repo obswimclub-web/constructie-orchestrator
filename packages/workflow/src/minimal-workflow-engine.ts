@@ -88,7 +88,7 @@ export class MinimalWorkflowEngine {
       updatedAt: now,
     };
 
-    let persisted = await this.store.startAttempt({
+    const persisted = await this.store.startAttempt({
       attempt,
       expectedWorkItemRevision: input.workItem.revision,
     });

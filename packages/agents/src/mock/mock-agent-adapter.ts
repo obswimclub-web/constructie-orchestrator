@@ -33,7 +33,8 @@ export class MockAgentAdapter implements AgentAdapter {
     return { capabilities: { code_generation: 'SUPPORTED', code_modification: 'SUPPORTED', test_execution: 'SUPPORTED', review: 'SUPPORTED', resumable_session: 'SUPPORTED' } };
   }
 
-  async start(workPackage: WorkPackage, _runtimeContext: AgentRuntimeContext): Promise<AgentRunHandle> {
+  async start(workPackage: WorkPackage, // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _runtimeContext: AgentRuntimeContext): Promise<AgentRunHandle> {
     const wp = WorkPackageSchema.parse(workPackage);
     const runId = randomUUID();
     const status = this.initialStatus(this.scenario);
@@ -65,7 +66,8 @@ export class MockAgentAdapter implements AgentAdapter {
     return { runRef, status: 'CANCELLED' };
   }
 
-  async getUsage(_runRef: AgentRunRef): Promise<AgentUsage> { return { inputUnits: 10, outputUnits: 5, estimatedCost: 0, currency: 'USD' }; }
+  async getUsage(// eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _runRef: AgentRunRef): Promise<AgentUsage> { return { inputUnits: 10, outputUnits: 5, estimatedCost: 0, currency: 'USD' }; }
   async health(): Promise<AdapterHealth> { return 'AVAILABLE'; }
 
   private getRun(ref: AgentRunRef): StoredRun { const run = this.registry.runs.get(ref.runId); if (!run) throw new AgentRunNotFoundError(ref.runId); return run; }
