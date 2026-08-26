@@ -26,7 +26,7 @@ const evidence: EvidenceRecord = {
 const verification: VerificationRecord = {
   id: '44444444-4444-4444-8444-444444444444', projectId: project.id, workItemId: workItem.id, verificationType: 'TEST', status: 'PASS', evidenceIds: [evidence.id], verifierRef: 'verifier-1', verifiedAt: new Date(), createdAt: new Date(),
 };
-const reconciliation = { state: 'PASS' as const, projectId: project.id, evaluatedProjectRevision: 7, evaluatedWorkItemRevision: 5, evaluatedAt: new Date(), ref: 'recon-1' };
+const reconciliation = { state: 'PASS' as const, projectId: project.id, evaluatedProjectRevision: 7, evaluatedWorkItemId: workItem.id, evaluatedWorkItemRevision: 5, evaluatedAt: new Date(), ref: 'recon-1' };
 
 describe('CompletionEngineV0', () => {
   it('issues COMPLETE only with exact revisions, current evidence, PASS verification, and reconciliation PASS', async () => {

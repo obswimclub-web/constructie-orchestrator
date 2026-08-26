@@ -49,6 +49,8 @@ class InMemoryWorkStore implements WorkflowWorkStore {
     return { workItem, attempt };
   }
 
+  async bindAgentRun(input: { attemptId: string; agentRunId: string; agentAdapterId: string }): Promise<Attempt> { const attempt = this.attempts.get(input.attemptId); if (!attempt) throw new Error('not found'); const next = { ...attempt, agentRunId: input.agentRunId, agentAdapterId: input.agentAdapterId, updatedAt: new Date() }; this.attempts.set(next.id, next); return next; }
+
   async transitionAttempt(input: { attemptId: string; to: AttemptState }): Promise<Attempt> {
     const current = this.attempts.get(input.attemptId); if (!current) throw new Error('attempt missing');
     assertAttemptTransition(current.state, input.to);
