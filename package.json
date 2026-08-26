@@ -16,10 +16,10 @@
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "arch:check": "node scripts/check-architecture.mjs",
-    "ci": "pnpm lint && pnpm typecheck && pnpm test && pnpm arch:check",
+    "ci": "pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm arch:check",
     "db:migrate:sql": "node scripts/apply-sql-migrations.mjs",
     "test:restart:postgres": "vitest run tests/integration/restart-resume-postgres.spec.ts",
-    "qualification": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm arch:check"
+    "qualification": "pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm arch:check"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

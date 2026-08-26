@@ -84,14 +84,14 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Build
+        run: pnpm build
+
       - name: Unit + integration + E2E tests
         run: pnpm test
 
       - name: PostgreSQL restart/resume proof
         run: pnpm test:restart:postgres
-
-      - name: Build
-        run: pnpm build
 
       - name: Architecture invariants
         run: pnpm arch:check
