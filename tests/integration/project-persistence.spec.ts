@@ -1,10 +1,14 @@
+import pg from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { createProject, StaleProjectRevisionError, type ProjectEvent } from "@co/domain";
 import { ProjectStore } from "@co/persistence";
 
-const prisma = new PrismaClient();
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 const store = new ProjectStore(prisma);
 
 function event(input: {

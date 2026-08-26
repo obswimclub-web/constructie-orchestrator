@@ -1,3 +1,5 @@
+import pg from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
@@ -7,7 +9,9 @@ import { createProject, createWorkItem, type Attempt } from '@co/domain';
 import { ProjectStore, WorkStore } from '@co/persistence';
 import { WorkflowResumeCoordinator } from '@co/workflow';
 
-const prismaA = new PrismaClient();
+const poolA = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const adapterA = new PrismaPg(poolA);
+const prismaA = new PrismaClient({ adapter: adapterA });
 
 async function clearDatabase(prisma: PrismaClient): Promise<void> {
   await prisma.completionDecision.deleteMany();
