@@ -51,7 +51,6 @@ jobs:
       - name: pnpm 10
         uses: pnpm/action-setup@v4
         with:
-          version: 10
           run_install: false
 
       - name: Runtime identity
