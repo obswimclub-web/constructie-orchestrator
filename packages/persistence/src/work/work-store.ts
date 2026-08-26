@@ -111,12 +111,16 @@ export class WorkStore {
       const current = await tx.attempt.findUniqueOrThrow({ where: { id: input.attemptId } });
       assertAttemptTransition(current.state as AttemptState, input.to);
       const active = isActiveAttemptState(input.to);
-      const row = await tx.attempt.update({ where: { id: input.attemptId }, data: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const updateData: any = {
         state: input.to,
         active,
-        startedAt: input.to === "RUNNING" && current.startedAt === null ? new Date() : undefined,
         endedAt: active ? null : new Date(),
-      }});
+      };
+      if (input.to === "RUNNING" && current.startedAt === null) {
+        updateData.startedAt = new Date();
+      }
+      const row = await tx.attempt.update({ where: { id: input.attemptId }, data: updateData });
       if (!active) {
         await tx.workItem.updateMany({ where: { id: current.workItemId, currentAttemptId: current.id }, data: { currentAttemptId: null } });
       }
