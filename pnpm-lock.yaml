@@ -26,6 +26,9 @@ importers:
       '@co/persistence':
         specifier: workspace:*
         version: link:packages/persistence
+      '@co/policy':
+        specifier: workspace:*
+        version: link:packages/policy
       '@co/reconciliation':
         specifier: workspace:*
         version: link:packages/reconciliation
@@ -153,6 +156,9 @@ importers:
       '@co/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@co/policy':
+        specifier: workspace:*
+        version: link:../policy
 
   packages/workflow:
     dependencies:
