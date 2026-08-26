@@ -129,7 +129,9 @@ describe('BOOT Qualification — PostgreSQL restart/resume proof', () => {
     await workStoreA.bindAgentRun({ attemptId, agentRunId: run.runId, agentAdapterId: adapterA.identify().adapterId });
 
     await prismaA.$disconnect();
-    const prismaB = new PrismaClient();
+    const poolB = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+    const adapterB = new PrismaPg(poolB);
+    const prismaB = new PrismaClient({ adapter: adapterB });
     try {
       const workStoreB = new WorkStore(prismaB);
       const adapterB = new MockAgentAdapter('SUCCESS', providerRegistry);
