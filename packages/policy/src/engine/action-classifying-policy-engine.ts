@@ -268,13 +268,23 @@ export class ActionClassifyingPolicyEngine implements ActionPolicyEvaluator {
     for (const cls of classes) {
       const requiredToken = gateRule.requiredTokens[cls as MutationClass];
       if (requiredToken) {
-        const matchingGrant = this.context.activeAuthorities.find(a =>
-          a.token === requiredToken &&
-          a.status === 'ACTIVE' &&
-          a.taskId === request.taskId &&
-          (!a.boundToGate || a.boundToGate === gate) &&
-          (!a.boundToAction || a.boundToAction === cls)
-        );
+
+
+
+        const isSensitive = ['OWNER_COMMIT_APPROVED', 'OWNER_PUSH_APPROVED', 'OWNER_DEPLOY_APPROVED', 'OWNER_PRODUCTION_MUTATION_APPROVED', 'OWNER_SCHEMA_CHANGE_APPROVED'].includes(requiredToken);
+        const matchingGrant = this.context.activeAuthorities.find(a => {
+          if (a.token !== requiredToken || a.status !== 'ACTIVE' || a.taskId !== request.taskId) return false;
+
+          let targetAction = cls;
+          if (requiredToken === 'OWNER_COMMIT_APPROVED' && cls === 'GIT_STAGE') targetAction = 'GIT_COMMIT';
+
+
+          if (isSensitive) {
+             return a.boundToGate === gate && a.boundToAction === targetAction;
+          } else {
+             return (!a.boundToGate || a.boundToGate === gate) && (!a.boundToAction || a.boundToAction === targetAction);
+          }
+        });
 
         if (!matchingGrant) {
           return {

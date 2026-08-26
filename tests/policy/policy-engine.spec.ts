@@ -29,7 +29,12 @@ function makeContext(options: {
   const iss = issuer();
   if (options.tokens) {
     for (const token of options.tokens as Parameters<ReturnType<typeof issuer>['issueAuthorityEvent']>[0]['authorityType'][]) {
-      const evt = iss.issueAuthorityEvent({ authorityType: token });
+      const isSensitive = ['OWNER_COMMIT_APPROVED', 'OWNER_PUSH_APPROVED', 'OWNER_DEPLOY_APPROVED'].includes(token);
+      let boundToGate, boundToAction;
+      if (token === 'OWNER_COMMIT_APPROVED') { boundToGate = 'COMMIT'; boundToAction = 'GIT_COMMIT'; }
+      if (token === 'OWNER_PUSH_APPROVED') { boundToGate = 'PUSH'; boundToAction = 'GIT_PUSH'; }
+      if (token === 'OWNER_DEPLOY_APPROVED') { boundToGate = 'DEPLOY'; boundToAction = 'DEPLOYMENT'; }
+      const evt = iss.issueAuthorityEvent(isSensitive ? { authorityType: token, taskId: TASK_ID, boundToGate, boundToAction } : { authorityType: token });
       processor.applyOwnerAuthorityEvent(evt);
     }
   }

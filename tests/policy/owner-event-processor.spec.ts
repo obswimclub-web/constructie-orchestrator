@@ -44,7 +44,7 @@ describe('OwnerEventProcessor — authority grants', () => {
   it('applies a trusted authority event — hasAuthority returns true', () => {
     const issuer = makeIssuer();
     const processor = makeProcessor('COMMIT');
-    const event = issuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED' });
+    const event = issuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED', boundToGate: 'COMMIT', boundToAction: 'GIT_COMMIT' });
     processor.applyOwnerAuthorityEvent(event);
     expect(processor.readOnlyView.hasAuthority('OWNER_COMMIT_APPROVED')).toBe(true);
   });
@@ -59,14 +59,14 @@ describe('OwnerEventProcessor — authority grants', () => {
   it('rejects event with mismatched taskId — TaskMismatchError', () => {
     const wrongIssuer = makeIssuer('different-task-id');
     const processor = makeProcessor();
-    const event = wrongIssuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED' });
+    const event = wrongIssuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED', boundToGate: 'COMMIT', boundToAction: 'GIT_COMMIT' });
     expect(() => processor.applyOwnerAuthorityEvent(event)).toThrow(TaskMismatchError);
   });
 
   it('activeAuthorities returns immutable snapshot — new array on each call', () => {
     const issuer = makeIssuer();
     const processor = makeProcessor('COMMIT');
-    const event = issuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED' });
+    const event = issuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED', boundToGate: 'COMMIT', boundToAction: 'GIT_COMMIT' });
     processor.applyOwnerAuthorityEvent(event);
     const snap1 = processor.readOnlyView.activeAuthorities;
     const snap2 = processor.readOnlyView.activeAuthorities;
@@ -176,7 +176,7 @@ describe('OwnerEventProcessor — grant state machine (ISSUED → ACTIVE → RES
   it('grant lifecycle: ACTIVE → RESERVED → CONSUMED on success', () => {
     const issuer = makeIssuer();
     const processor = makeProcessor('PUSH');
-    const authEvent = issuer.issueAuthorityEvent({ authorityType: 'OWNER_PUSH_APPROVED' });
+    const authEvent = issuer.issueAuthorityEvent({ authorityType: 'OWNER_PUSH_APPROVED', boundToGate: 'PUSH', boundToAction: 'GIT_PUSH' });
     processor.applyOwnerAuthorityEvent(authEvent);
     expect(processor.readOnlyView.hasAuthority('OWNER_PUSH_APPROVED')).toBe(true);
 
@@ -201,7 +201,7 @@ describe('OwnerEventProcessor — grant state machine (ISSUED → ACTIVE → RES
   it('grant NOT consumed after TIMED_OUT — becomes RECONCILIATION_REQUIRED', () => {
     const issuer = makeIssuer();
     const processor = makeProcessor('PUSH');
-    const authEvent = issuer.issueAuthorityEvent({ authorityType: 'OWNER_PUSH_APPROVED' });
+    const authEvent = issuer.issueAuthorityEvent({ authorityType: 'OWNER_PUSH_APPROVED', boundToGate: 'PUSH', boundToAction: 'GIT_PUSH' });
     processor.applyOwnerAuthorityEvent(authEvent);
 
     const grantConsumer = processor.asGrantConsumer();
@@ -218,7 +218,7 @@ describe('OwnerEventProcessor — grant state machine (ISSUED → ACTIVE → RES
   it('grant released for retry after CANCELLED (proven not executed)', () => {
     const issuer = makeIssuer();
     const processor = makeProcessor('COMMIT');
-    const authEvent = issuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED' });
+    const authEvent = issuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED', boundToGate: 'COMMIT', boundToAction: 'GIT_COMMIT' });
     processor.applyOwnerAuthorityEvent(authEvent);
 
     const grantConsumer = processor.asGrantConsumer();
@@ -236,7 +236,7 @@ describe('OwnerEventProcessor — grant state machine (ISSUED → ACTIVE → RES
   it('throws GrantNotFoundError on consumeGrant without reserve', () => {
     const issuer = makeIssuer();
     const processor = makeProcessor('PUSH');
-    const authEvent = issuer.issueAuthorityEvent({ authorityType: 'OWNER_PUSH_APPROVED' });
+    const authEvent = issuer.issueAuthorityEvent({ authorityType: 'OWNER_PUSH_APPROVED', boundToGate: 'PUSH', boundToAction: 'GIT_PUSH' });
     processor.applyOwnerAuthorityEvent(authEvent);
 
     const grantConsumer = processor.asGrantConsumer();

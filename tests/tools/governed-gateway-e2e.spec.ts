@@ -67,7 +67,7 @@ describe('GovernedToolGateway E2E', () => {
 
   it('GW-2: valid token -> ALLOW, RESERVED -> CONSUMED on SUCCEEDED', async () => {
     const { gateway, adapter, ledger, issuer, processor } = setup();
-    processor.applyOwnerAuthorityEvent(issuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED' }));
+    processor.applyOwnerAuthorityEvent(issuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED', taskId: 'task-1', boundToGate: 'COMMIT', boundToAction: 'GIT_COMMIT' }));
 
     // Simulate successful execution
     adapter.executeAuthorized.mockResolvedValue({
@@ -98,7 +98,7 @@ describe('GovernedToolGateway E2E', () => {
 
   it('GW-3: valid token, execution fails -> RESERVED -> RECONCILIATION_REQUIRED', async () => {
     const { gateway, adapter, issuer, processor } = setup();
-    processor.applyOwnerAuthorityEvent(issuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED' }));
+    processor.applyOwnerAuthorityEvent(issuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED', taskId: 'task-1', boundToGate: 'COMMIT', boundToAction: 'GIT_COMMIT' }));
 
     adapter.executeAuthorized.mockResolvedValue({
       schemaVersion: '1.0.0',
@@ -125,7 +125,7 @@ describe('GovernedToolGateway E2E', () => {
 
   it('GW-4: valid token, execution cancelled -> RESERVED -> ACTIVE (retry allowed)', async () => {
     const { gateway, adapter, issuer, processor } = setup();
-    processor.applyOwnerAuthorityEvent(issuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED' }));
+    processor.applyOwnerAuthorityEvent(issuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED', taskId: 'task-1', boundToGate: 'COMMIT', boundToAction: 'GIT_COMMIT' }));
 
     adapter.executeAuthorized.mockResolvedValue({
       schemaVersion: '1.0.0',
@@ -181,7 +181,7 @@ describe('GovernedToolGateway E2E', () => {
   it('GW-6: Guard violation -> DENY, NOT_EXECUTED', async () => {
     const { gateway, adapter, ledger, issuer, processor } = setup();
     // Gate is COMMIT, token granted, but reading .env should trigger SecretFileGuard
-    processor.applyOwnerAuthorityEvent(issuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED' }));
+    processor.applyOwnerAuthorityEvent(issuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED', taskId: 'task-1', boundToGate: 'COMMIT', boundToAction: 'GIT_COMMIT' }));
 
     const request = req({ toolId: 'shell', operationId: 'shell.exec', parameters: { command: 'cat .env' } });
     const result = await gateway.execute(request);
