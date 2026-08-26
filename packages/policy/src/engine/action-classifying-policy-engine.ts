@@ -5,7 +5,7 @@ import {
   SecretLiteralGuard,
   SecretOutputGuard,
 } from '../classification/action-classifier.js';
-import type { ExecutionGateContext } from '../gate/execution-gate-context.js';
+import type { ReadOnlyExecutionContext } from '../context/read-only-execution-context.js';
 import type {
   ActionPolicyDecision,
   ActionPolicyEvaluator,
@@ -99,10 +99,10 @@ const GATE_POLICY: Record<ExecutionGate, GateRule> = {
       'SECRET_READ', 'SECRET_OUTPUT', 'CREDENTIAL_USE', 'AUTH_SESSION_CREATION', 'DESTRUCTIVE',
     ],
     requiredTokens: {
-      GIT_STAGE: 'OWNER_COMMIT_APPROVED',
+      GIT_STAGE:  'OWNER_COMMIT_APPROVED',
       GIT_COMMIT: 'OWNER_COMMIT_APPROVED',
     },
-    enforceFileScope: true, // exact file scope enforced
+    enforceFileScope: true,
   },
   PUSH: {
     allowedClasses: ['READ_ONLY', 'GIT_PUSH'],
@@ -177,37 +177,44 @@ const GATE_POLICY: Record<ExecutionGate, GateRule> = {
  *    Guard violations are HARD DENY — not subject to gate or token overrides.
  * 2. Classify the action into MutationClasses.
  * 3. Check for UNKNOWN class → REQUIRE_APPROVAL (fail-closed).
- * 4. Resolve current gate from ExecutionGateContext.
+ * 4. Resolve current gate from ReadOnlyExecutionContext.
  * 5. Check each class against the gate's deniedClasses.
  * 6. Check each class against the gate's allowedClasses.
  * 7. For classes in allowedClasses, check requiredTokens.
- * 8. If enforceFileScope: verify requested file paths ⊆ approvedFileScope.
+ * 8. If enforceFileScope: verify requested file paths ⊆ approvedFiles.
  * 9. ALLOW only when all checks pass.
+ *    When ALLOW was granted by a token, set grantedByAuthority on the decision.
+ *    The gateway uses this to manage the grant lifecycle (RESERVE → CONSUME/RECONCILE).
  *
  * HARD DENY semantics: when decision = DENY, the tool adapter is NEVER called.
  * This is enforced at the GovernedToolGateway layer, not just returned as a hint.
+ *
+ * evaluatorKind discriminant allows GovernedToolGateway to identify this evaluator
+ * at runtime without relying on Symbol brand injection from @co/tools.
  */
 export class ActionClassifyingPolicyEngine implements ActionPolicyEvaluator {
+  public readonly evaluatorKind = 'ACTION_POLICY_EVALUATOR' as const;
+
   private readonly classifier = new ActionClassifier();
   private readonly secretFileGuard = new SecretFileGuard();
   private readonly secretOutputGuard = new SecretOutputGuard();
   private readonly secretLiteralGuard = new SecretLiteralGuard();
   private readonly authCredentialScriptGuard = new AuthCredentialScriptGuard();
 
-  public constructor(private readonly gateContext: ExecutionGateContext) {}
+  public constructor(private readonly context: ReadOnlyExecutionContext) {}
 
   public async evaluate(request: ActionRequest): Promise<ActionPolicyDecision> {
-    const gate = this.gateContext.gate;
+    const gate = this.context.gate;
 
     // ── Step 1: Guard checks (hard-deny, always evaluated) ──────────────────
-    const guards = [
+    const guardResults = [
       this.secretFileGuard.check(request),
       this.secretOutputGuard.check(request),
       this.secretLiteralGuard.check(request),
       this.authCredentialScriptGuard.check(request),
     ];
 
-    for (const violation of guards) {
+    for (const violation of guardResults) {
       if (violation) {
         return this.deny(request, [], gate, violation.ruleCode,
           `Guard '${violation.guardName}' triggered: ${violation.detail}`,
@@ -235,7 +242,7 @@ export class ActionClassifyingPolicyEngine implements ActionPolicyEvaluator {
 
     const gateRule = GATE_POLICY[gate];
 
-    // ── Step 4 & 5: Check denied classes (hard deny for this gate) ────────────
+    // ── Step 4 & 5: Check denied classes ─────────────────────────────────────
     for (const cls of classes) {
       if (gateRule.deniedClasses.includes(cls)) {
         return this.deny(request, classes, gate,
@@ -245,7 +252,7 @@ export class ActionClassifyingPolicyEngine implements ActionPolicyEvaluator {
       }
     }
 
-    // ── Step 6: Check allowed classes (if not in allowed → deny) ─────────────
+    // ── Step 6: Check allowed classes ─────────────────────────────────────────
     for (const cls of classes) {
       if (!gateRule.allowedClasses.includes(cls)) {
         return this.deny(request, classes, gate,
@@ -256,33 +263,38 @@ export class ActionClassifyingPolicyEngine implements ActionPolicyEvaluator {
       }
     }
 
-    // ── Step 7: Authority token checks ───────────────────────────────────────
+    // ── Step 7: Authority token checks ────────────────────────────────────────
+    let grantedByAuthority: OwnerAuthorityToken | undefined;
     for (const cls of classes) {
       const requiredToken = gateRule.requiredTokens[cls as MutationClass];
-      if (requiredToken && !this.gateContext.hasAuthority(requiredToken)) {
-        return {
-          actionId: request.actionId,
-          decision: 'DENY',
-          policyRule: `${requiredToken}_REQUIRED`,
-          currentGate: gate,
-          requiredAuthority: requiredToken,
-          triggeringClasses: [cls],
-          allClasses: classes,
-          reason:
-            `Class '${cls}' in gate '${gate}' requires authority token '${requiredToken}', ` +
-            `which has not been granted. Owner must explicitly authorize this action.`,
-        };
+      if (requiredToken) {
+        if (!this.context.hasAuthority(requiredToken)) {
+          return {
+            actionId: request.actionId,
+            decision: 'DENY',
+            policyRule: `${requiredToken}_REQUIRED`,
+            currentGate: gate,
+            requiredAuthority: requiredToken,
+            triggeringClasses: [cls],
+            allClasses: classes,
+            reason:
+              `Class '${cls}' in gate '${gate}' requires authority token '${requiredToken}', ` +
+              `which has not been granted. Owner must explicitly authorize this action.`,
+          };
+        }
+        // Token present — record as the granting authority for the gateway's lifecycle management
+        grantedByAuthority = requiredToken;
       }
     }
 
     // ── Step 8: File scope enforcement ────────────────────────────────────────
     if (gateRule.enforceFileScope && request.requestedFilePaths && request.requestedFilePaths.length > 0) {
       for (const filePath of request.requestedFilePaths) {
-        if (!this.gateContext.isFileApproved(filePath)) {
+        if (!this.context.isFileApproved(filePath)) {
           return this.deny(request, classes, gate,
             'FILE_NOT_IN_APPROVED_SCOPE',
             `File path '${filePath}' is not in the approved file scope for gate '${gate}'. ` +
-            `Approved files: [${[...this.gateContext.approvedFileScope].join(', ')}].`,
+            `Approved files: [${this.context.approvedFiles.join(', ')}].`,
           );
         }
       }
@@ -294,6 +306,7 @@ export class ActionClassifyingPolicyEngine implements ActionPolicyEvaluator {
       decision: 'ALLOW',
       policyRule: 'GATE_POLICY_ALLOW',
       currentGate: gate,
+      grantedByAuthority,
       triggeringClasses: [],
       allClasses: classes,
       reason: `All ${classes.length} class(es) [${classes.join(', ')}] are allowed in gate '${gate}'.`,

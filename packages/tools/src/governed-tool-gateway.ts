@@ -14,6 +14,8 @@ import type {
   ActionAuditLedger,
   ActionPolicyEvaluator,
   ActionRequest,
+  OwnerAuthorityToken,
+  OwnerGrantConsumer,
 } from '@co/policy';
 
 export class ToolNotRegisteredError extends Error {
@@ -28,10 +30,21 @@ export class ToolNotRegisteredError extends Error {
  *
  * Accepts either:
  *   - A legacy ToolPolicyEvaluator (operationId set check — for tests / backward compat)
- *   - A new ActionPolicyEvaluator (full gate x class x authority enforcement)
+ *   - A new ActionPolicyEvaluator (full gate × class × authority enforcement)
  *
  * INVARIANT: When policy decision !== 'ALLOW', the ToolAdapter is NEVER invoked.
  * A denial is recorded in the audit ledger with executionResult = 'NOT_EXECUTED'.
+ *
+ * When an ActionPolicyEvaluator is used and the decision carries grantedByAuthority:
+ *   1. Grant is RESERVED before adapter.executeAuthorized() is called.
+ *   2. On SUCCEEDED → grant CONSUMED.
+ *   3. On CANCELLED → grant released for retry (ACTIVE).
+ *   4. On TIMED_OUT / FAILED / UNKNOWN → grant RECONCILIATION_REQUIRED.
+ *
+ * evaluatorKind discriminant ('ACTION_POLICY_EVALUATOR') is used to detect
+ * which evaluator path to take — no Symbol brand required.
+ *
+ * Use createProductionGateway() to enforce ActionPolicyEvaluator in production.
  */
 export class GovernedToolGateway implements ToolGateway {
   private readonly adapters: Map<string, ToolAdapter>;
@@ -40,6 +53,7 @@ export class GovernedToolGateway implements ToolGateway {
     private readonly policy: ToolPolicyEvaluator | ActionPolicyEvaluator,
     adapters: readonly ToolAdapter[],
     private readonly auditLedger?: ActionAuditLedger,
+    private readonly grantConsumer?: OwnerGrantConsumer,
   ) {
     this.adapters = new Map(adapters.map((adapter) => [adapter.toolId, adapter]));
   }
@@ -50,6 +64,7 @@ export class GovernedToolGateway implements ToolGateway {
     let decisionAllow: boolean;
     let reasonCode: string;
     let actionId: string | undefined;
+    let grantedByAuthority: OwnerAuthorityToken | undefined;
     let policyForAuthorized: {
       requestId: string;
       decision: 'ALLOW';
@@ -65,6 +80,7 @@ export class GovernedToolGateway implements ToolGateway {
 
       decisionAllow = actionDecision.decision === 'ALLOW';
       reasonCode = actionDecision.policyRule;
+      grantedByAuthority = actionDecision.grantedByAuthority;
 
       this.auditLedger?.recordProposed({
         actionId: actionRequest.actionId,
@@ -98,7 +114,7 @@ export class GovernedToolGateway implements ToolGateway {
       }
     }
 
-    // DENY: tool adapter is NEVER called
+    // DENY: ToolAdapter is NEVER called
     if (!decisionAllow) {
       if (actionId) this.auditLedger?.recordExecuted(actionId, 'NOT_EXECUTED');
 
@@ -117,13 +133,51 @@ export class GovernedToolGateway implements ToolGateway {
       });
     }
 
-    // ALLOW: tool adapter is called
+    // Verify adapter exists before committing to execution
     const adapter = this.adapters.get(request.toolId);
     if (!adapter) throw new ToolNotRegisteredError(request.toolId);
 
+    // ALLOW: reserve grant before adapter execution (if a token authorized the action)
+    if (actionId && grantedByAuthority && this.grantConsumer) {
+      this.grantConsumer.reserveGrant(grantedByAuthority, actionId);
+    }
+
+    // ALLOW: invoke ToolAdapter
+
     const authorized = AuthorizedToolRequestSchema.parse({ request, policy: policyForAuthorized });
-    const result = await adapter.executeAuthorized(authorized);
+    let result: ToolExecutionResult;
+    try {
+      result = await adapter.executeAuthorized(authorized);
+    } catch (err) {
+      // Execution threw — treat as TIMED_OUT / ambiguous failure
+      if (actionId && grantedByAuthority && this.grantConsumer) {
+        this.grantConsumer.requireReconciliation(grantedByAuthority, actionId);
+      }
+      if (actionId) this.auditLedger?.recordExecuted(actionId, 'FAILED');
+      throw err;
+    }
+
     const parsed = ToolExecutionResultSchema.parse(result);
+
+    // Post-execution grant lifecycle management
+    if (actionId && grantedByAuthority && this.grantConsumer) {
+      switch (parsed.status) {
+        case 'SUCCEEDED':
+          this.grantConsumer.consumeGrant(grantedByAuthority, actionId);
+          break;
+        case 'CANCELLED':
+          // Proven not executed — release for retry
+          this.grantConsumer.releaseGrantForRetry(grantedByAuthority, actionId);
+          break;
+        case 'TIMED_OUT':
+        case 'FAILED':
+        case 'UNKNOWN':
+        default:
+          // Ambiguous — require reconciliation before retry is authorized
+          this.grantConsumer.requireReconciliation(grantedByAuthority, actionId);
+          break;
+      }
+    }
 
     if (actionId) {
       this.auditLedger?.recordExecuted(
@@ -135,6 +189,24 @@ export class GovernedToolGateway implements ToolGateway {
     return parsed;
   }
 }
+
+/**
+ * Production gateway factory — accepts ActionPolicyEvaluator only.
+ * Use this in production composition roots to guarantee the canonical engine is wired.
+ * Tests may use new GovernedToolGateway() directly with StaticToolPolicy.
+ *
+ * PRODUCTION_GATEWAY_REQUIRES_ACTION_POLICY=true
+ */
+export function createProductionGateway(
+  policy: ActionPolicyEvaluator,
+  adapters: readonly ToolAdapter[],
+  auditLedger: ActionAuditLedger,
+  grantConsumer?: OwnerGrantConsumer,
+): GovernedToolGateway {
+  return new GovernedToolGateway(policy, adapters, auditLedger, grantConsumer);
+}
+
+// ─── Bridge: ToolExecutionRequest → ActionRequest ────────────────────────────
 
 function bridgeToActionRequest(request: ToolExecutionRequest): ActionRequest {
   const params = request.parameters as Record<string, unknown>;
@@ -204,10 +276,17 @@ function mapEnvironment(env: string): ActionRequest['environment'] {
   }
 }
 
-export const ACTION_POLICY_BRAND: unique symbol = Symbol('ActionPolicyEvaluator');
+// ─── Runtime evaluator identification ────────────────────────────────────────
 
+/**
+ * Identifies whether the evaluator is an ActionPolicyEvaluator using the
+ * evaluatorKind discriminant.
+ *
+ * No Symbol brand needed — the discriminant literal is sufficient and
+ * is always present on ActionClassifyingPolicyEngine instances.
+ */
 function isActionPolicyEvaluator(
   p: ToolPolicyEvaluator | ActionPolicyEvaluator,
 ): p is ActionPolicyEvaluator {
-  return ACTION_POLICY_BRAND in p;
+  return (p as ActionPolicyEvaluator).evaluatorKind === 'ACTION_POLICY_EVALUATOR';
 }

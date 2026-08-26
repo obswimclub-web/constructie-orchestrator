@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@co/contracts": "workspace:*",
+    "@co/tools": "workspace:*",
     "openai": "^4.104.0"
   }
 }

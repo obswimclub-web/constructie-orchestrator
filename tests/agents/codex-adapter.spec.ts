@@ -42,7 +42,8 @@ describe('CodexAdapter', () => {
     const factory = (key: string) => ({
       chat: { completions: { create: mockCreate } },
     });
-    const adapter = new CodexAdapter(factory);
+    const mockGateway = { execute: vi.fn() } as any;
+    const adapter = new CodexAdapter(mockGateway, factory);
     const handle = await adapter.execute(wp, ctx);
 
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -56,7 +57,8 @@ describe('CodexAdapter', () => {
     const factory = (key: string) => ({
       chat: { completions: { create: mockCreate } },
     });
-    const adapter = new CodexAdapter(factory);
+    const mockGateway = { execute: vi.fn() } as any;
+    const adapter = new CodexAdapter(mockGateway, factory);
     const handle = await adapter.execute(wp, ctx);
 
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -70,7 +72,8 @@ describe('CodexAdapter', () => {
     const factory = (key: string) => ({
       chat: { completions: { create: mockCreate } },
     });
-    const adapter = new CodexAdapter(factory);
+    const mockGateway = { execute: vi.fn() } as any;
+    const adapter = new CodexAdapter(mockGateway, factory);
     const handle = await adapter.execute(wp, ctx);
 
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -91,7 +94,8 @@ describe('CodexAdapter', () => {
       capturedKey = key;
       return { chat: { completions: { create: mockCreate } } };
     };
-    const adapter = new CodexAdapter(factory);
+    const mockGateway = { execute: vi.fn() } as any;
+    const adapter = new CodexAdapter(mockGateway, factory);
 
     const handle = await adapter.execute(wp, ctx);
 

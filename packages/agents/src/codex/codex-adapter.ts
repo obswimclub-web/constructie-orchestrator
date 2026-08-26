@@ -13,8 +13,14 @@ import type {
   ArtifactRef,
   CapabilityProfile,
   EvidenceRef,
+  ToolGateway,
   WorkPackage,
 } from '@co/contracts';
+import {
+  TOOL_EXECUTION_REQUEST_SCHEMA_VERSION,
+  ToolExecutionRequestSchema,
+} from '@co/contracts';
+import { parseProviderOutput } from './provider-output-parser.js';
 
 type CodexRunState = {
   status: AgentRunStatus;
@@ -23,10 +29,34 @@ type CodexRunState = {
   usage: AgentUsage;
 };
 
+/**
+ * CodexAdapter
+ *
+ * Implements AgentAdapter for OpenAI-based code generation.
+ *
+ * Policy boundary:
+ *
+ *   MODEL_INFERENCE:
+ *     openai.chat.completions.create() is a direct, unrestricted call.
+ *     It is reasoning/inference — not a mutating tool action.
+ *     MODEL_INFERENCE_REQUIRES_POLICY=false
+ *
+ *   TOOL_EXECUTION:
+ *     Any ToolProposal extracted from the model response by parseProviderOutput()
+ *     is submitted through the injected ToolGateway before execution.
+ *     The gateway applies ActionClassifyingPolicyEngine and returns ALLOW or DENIED.
+ *     TOOL_EXECUTION_REQUIRES_POLICY=true
+ *
+ * The ToolGateway is injected at construction — CodexAdapter never holds raw
+ * ToolAdapter references or OwnerEventProcessor references.
+ */
 export class CodexAdapter implements AgentAdapter {
   private readonly runs = new Map<string, CodexRunState>();
 
-  constructor(private readonly openaiClientFactory?: (apiKey: string) => any) {}
+  constructor(
+    private readonly gateway: ToolGateway,
+    private readonly openaiClientFactory?: (apiKey: string) => any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  ) {}
 
   async capabilities(): Promise<CapabilityProfile> {
     return {
@@ -73,6 +103,8 @@ export class CodexAdapter implements AgentAdapter {
       return { runId, status: 'FAILED' };
     }
 
+    // MODEL_INFERENCE: direct call — not a mutating tool action.
+    // Policy applies to ToolProposals extracted from the response, not to this call.
     const openai = this.openaiClientFactory
       ? this.openaiClientFactory(apiKey)
       : new OpenAI({ apiKey });
@@ -87,11 +119,13 @@ export class CodexAdapter implements AgentAdapter {
 
   private async performExecution(
     runId: string,
-    openai: any,
+    openai: any, // eslint-disable-line @typescript-eslint/no-explicit-any
     wp: WorkPackage,
     ctx: AgentRuntimeContext,
   ) {
     try {
+      // MODEL_INFERENCE: direct call — not a mutating tool action.
+      // Policy applies to ToolProposals extracted from the response, not to this call.
       const response = await openai.chat.completions.create(
         {
           model: 'gpt-4o',
@@ -105,12 +139,51 @@ export class CodexAdapter implements AgentAdapter {
       const choice = response.choices[0];
       const content = choice?.message?.content ?? '';
 
+      // TOOL_EXECUTION: parse structured output, submit proposals through gateway.
+      // MODEL_TEXT_IS_NOT_EXECUTABLE=true — only schema-valid proposals are executable.
+      const structured = parseProviderOutput(content, {
+        taskId: wp.workItemId,
+        agentId: 'codex-adapter',
+        workPackageRef: wp.workPackageId,
+        correlationId: ctx.correlationId,
+      });
+
+      // Submit each tool proposal through the gateway (policy enforcement point)
+      for (const proposal of structured.toolProposals) {
+        const toolRequest = ToolExecutionRequestSchema.parse({
+          schemaVersion: TOOL_EXECUTION_REQUEST_SCHEMA_VERSION,
+          requestId: randomUUID(),
+          projectId: wp.projectId,
+          actorRef: 'codex-adapter',
+          workItemRef: wp.workItemId,
+          workPackageRef: wp.workPackageId,
+          toolId: proposal.toolId,
+          operationId: proposal.operationId,
+          targetResource: proposal.targetResource,
+          environment: proposal.environment,
+          parameters: proposal.parameters,
+          authorityContextRef: wp.authorityContextRef,
+          idempotencyKey: randomUUID(),
+          correlationId: ctx.correlationId,
+        });
+        // Gateway returns ToolExecutionResult (ALLOW → executed, DENIED → NOT_EXECUTED)
+        // The adapter does not need to inspect the result — denial is enforced at the gateway.
+        await this.gateway.execute(toolRequest);
+      }
+
       this.updateState(runId, {
         status: 'COMPLETED',
         artifacts: [
+          ...structured.artifacts.map(a => ({
+            artifactId: randomUUID(),
+            // Cast to known types — parser validates environment, type fields
+            type: (a.type as ArtifactRef['type']) || 'PATCH' as const,
+            ref: a.ref,
+          })),
+          // Always include the raw model response as a fallback artifact
           {
             artifactId: randomUUID(),
-            type: 'PATCH',
+            type: 'PATCH' as const,
             ref: content.substring(0, 50),
           },
         ],
@@ -128,14 +201,14 @@ export class CodexAdapter implements AgentAdapter {
           currency: 'USD',
         },
       });
-    } catch (error: any) {
+    } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       const status = error.status;
       if (status === 429) {
         this.updateState(runId, { status: 'INTERRUPTED' });
       } else if (status === 401) {
-        this.updateState(runId, { status: 'FAILED' }); // severity: CRITICAL handled upstream if needed
+        this.updateState(runId, { status: 'FAILED' });
       } else {
-        this.updateState(runId, { status: 'FAILED' }); // severity: HIGH handled upstream
+        this.updateState(runId, { status: 'FAILED' });
       }
     }
   }

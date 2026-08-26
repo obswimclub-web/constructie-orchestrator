@@ -42,7 +42,7 @@ export type MutationClass = (typeof MUTATION_CLASSES)[number];
 
 /**
  * A project execution passes through ordered gates.
- * The Policy Engine resolves the current gate from ExecutionGateContext
+ * The Policy Engine resolves the current gate from ReadOnlyExecutionContext
  * and applies the corresponding allow/deny rule matrix.
  */
 export const EXECUTION_GATES = [
@@ -67,8 +67,8 @@ export type ExecutionGate = (typeof EXECUTION_GATES)[number];
 /**
  * Machine-enforceable owner authority grants.
  * An action requiring a grant FAILS before execution when that grant is absent.
- * Tokens are NEVER inferred from prose; they must be granted explicitly
- * through ExecutionGateContext.grantAuthority().
+ * Tokens are NEVER inferred from prose; they must be issued by TrustedOwnerAuthorityIssuer
+ * and applied through OwnerEventProcessor.
  */
 export const OWNER_AUTHORITY_TOKENS = [
   'OWNER_PLAN_APPROVED',
@@ -81,6 +81,82 @@ export const OWNER_AUTHORITY_TOKENS = [
 ] as const;
 
 export type OwnerAuthorityToken = (typeof OWNER_AUTHORITY_TOKENS)[number];
+
+// ─── Authority Grant Lifecycle ────────────────────────────────────────────────
+
+/**
+ * Grant state machine:
+ *
+ *   ISSUED → ACTIVE → RESERVED(actionId) → CONSUMED          (on SUCCEEDED)
+ *                                         → ACTIVE            (on PROVEN_NOT_EXECUTED
+ *                                                               or FAILED_WITH_CONFIRMED_NO_SIDE_EFFECT)
+ *                                         → RECONCILIATION_REQUIRED (on TIMED_OUT / FAILED /
+ *                                                                     CONNECTION_LOST / UNKNOWN_RESULT)
+ *
+ * A grant in RECONCILIATION_REQUIRED may NOT automatically authorize a retry.
+ * The Orchestrator must reconcile before the same token can be used again.
+ *
+ * INVARIANT: NO_SENSITIVE_ACTION_CAN_BE_DUPLICATED_DUE_TO_AMBIGUOUS_FAILURE=true
+ */
+export const AUTHORITY_GRANT_STATUSES = [
+  'ISSUED',
+  'ACTIVE',
+  'RESERVED',
+  'CONSUMED',
+  'RECONCILIATION_REQUIRED',
+] as const;
+
+export type AuthorityGrantStatus = (typeof AUTHORITY_GRANT_STATUSES)[number];
+
+export interface AuthorityGrantView {
+  readonly token: OwnerAuthorityToken;
+  readonly taskId: string;
+  readonly status: AuthorityGrantStatus;
+  /** Set when status = RESERVED; the actionId this grant is reserved for. */
+  readonly reservedForActionId?: string | undefined;
+  /** Gate the grant is bound to; undefined = any gate (rare). */
+  readonly boundToGate?: ExecutionGate | undefined;
+  /**
+   * MutationClass action bound (e.g. 'GIT_COMMIT').
+   * Grant verification checks this matches the proposed action's primary class.
+   */
+  readonly boundToAction?: string | undefined;
+  readonly issuedAt: Date;
+}
+
+// ─── Owner Grant Consumer (gateway-only capability) ───────────────────────────
+
+/**
+ * Capability exposed to GovernedToolGateway ONLY for post-execution grant lifecycle management.
+ * Agent/provider code must never receive this interface.
+ */
+export interface OwnerGrantConsumer {
+  /**
+   * Reserve the grant for a specific actionId before executing.
+   * Transitions ACTIVE → RESERVED(actionId).
+   */
+  reserveGrant(token: OwnerAuthorityToken, actionId: string): void;
+
+  /**
+   * Consume the grant after confirmed successful execution.
+   * Transitions RESERVED → CONSUMED.
+   */
+  consumeGrant(token: OwnerAuthorityToken, actionId: string): void;
+
+  /**
+   * Release the grant back to ACTIVE for retry after proven-not-executed failure.
+   * Transitions RESERVED → ACTIVE.
+   * Only valid for: PROVEN_NOT_EXECUTED, FAILED_WITH_CONFIRMED_NO_SIDE_EFFECT, CANCELLED.
+   */
+  releaseGrantForRetry(token: OwnerAuthorityToken, actionId: string): void;
+
+  /**
+   * Mark the grant as requiring reconciliation after ambiguous execution result.
+   * Transitions RESERVED → RECONCILIATION_REQUIRED.
+   * Applies to: TIMED_OUT, FAILED (ambiguous), CONNECTION_LOST, UNKNOWN_RESULT.
+   */
+  requireReconciliation(token: OwnerAuthorityToken, actionId: string): void;
+}
 
 // ─── Environment ─────────────────────────────────────────────────────────────
 
@@ -128,7 +204,7 @@ export interface ActionRequest {
   /**
    * For SOURCE_MUTATION / GIT_STAGE / GIT_COMMIT actions:
    * the set of file paths the provider intends to modify/stage/commit.
-   * Validated against ExecutionGateContext.approvedFileScope.
+   * Validated against ReadOnlyExecutionContext.approvedFiles.
    */
   readonly requestedFilePaths?: readonly string[];
   /**
@@ -150,8 +226,8 @@ export const POLICY_DECISIONS = [
 export type PolicyDecision = (typeof POLICY_DECISIONS)[number];
 
 /**
- * Structured denial returned to the agent when policy blocks execution.
- * The LLM may reason about this denial but CANNOT execute around it.
+ * Structured decision returned for every evaluated action.
+ * When decision = DENY, the LLM may reason about the denial but CANNOT execute around it.
  */
 export interface ActionPolicyDecision {
   readonly actionId: string;
@@ -160,8 +236,14 @@ export interface ActionPolicyDecision {
   readonly policyRule: string;
   /** The gate that was active during evaluation */
   readonly currentGate: ExecutionGate;
-  /** Authority token required to unlock this action (if applicable) */
+  /** Authority token required to unlock this action (when DENY due to missing token) */
   readonly requiredAuthority?: OwnerAuthorityToken | undefined;
+  /**
+   * When decision = ALLOW and the ALLOW was granted by a specific authority token,
+   * this field identifies that token. The gateway uses this to manage grant lifecycle
+   * (RESERVE before execution, CONSUME after success, REQUIRE_RECONCILIATION on ambiguity).
+   */
+  readonly grantedByAuthority?: OwnerAuthorityToken | undefined;
   /** The mutation classes that triggered the denial */
   readonly triggeringClasses: readonly MutationClass[];
   /** Full set of classes the action was classified into */
@@ -210,7 +292,15 @@ export interface GateRule {
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
+/**
+ * The canonical pre-execution policy evaluator interface.
+ *
+ * evaluatorKind discriminant allows GovernedToolGateway to distinguish
+ * ActionPolicyEvaluator from legacy ToolPolicyEvaluator at runtime
+ * without relying on Symbol brand injection.
+ */
 export interface ActionPolicyEvaluator {
+  readonly evaluatorKind: 'ACTION_POLICY_EVALUATOR';
   evaluate(request: ActionRequest): Promise<ActionPolicyDecision>;
 }
 

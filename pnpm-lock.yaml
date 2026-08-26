@@ -89,6 +89,9 @@ importers:
       '@co/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@co/tools':
+        specifier: workspace:*
+        version: link:../tools
       openai:
         specifier: ^4.104.0
         version: 4.104.0(zod@4.4.3)
@@ -121,7 +124,17 @@ importers:
 
   packages/observability: {}
 
-  packages/orchestrator: {}
+  packages/orchestrator:
+    dependencies:
+      '@co/agents':
+        specifier: workspace:*
+        version: link:../agents
+      '@co/policy':
+        specifier: workspace:*
+        version: link:../policy
+      '@co/tools':
+        specifier: workspace:*
+        version: link:../tools
 
   packages/persistence:
     dependencies:
