@@ -123,6 +123,7 @@ export function parseProviderOutput(
   rawContent: string,
   _context?: ParseContext,
 ): StructuredProviderOutput {
+  void _context;
   const fallback: StructuredProviderOutput = {
     summary:       rawContent.slice(0, 1000),
     artifacts:     [],

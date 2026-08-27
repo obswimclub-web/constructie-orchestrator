@@ -14,7 +14,6 @@ import type {
   ActionAuditLedger,
   ActionPolicyEvaluator,
   ActionRequest,
-  OwnerAuthorityToken,
   OwnerGrantConsumer,
 } from '@co/policy';
 

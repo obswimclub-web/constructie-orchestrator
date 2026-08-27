@@ -30,19 +30,22 @@ export class AntigravityPythonBridge implements AgentBridge {
 
     this.activeProcesses.set(runId, child);
 
-    const resultPromise = new Promise<AgentRunResult>((resolve, reject) => {
+    const resultPromise = new Promise<AgentRunResult>((resolve, _reject) => {
+      void _reject;
       let stdoutData = '';
 
       child.stdout.on('data', (chunk) => {
         stdoutData += chunk.toString();
       });
 
-      child.stderr.on('data', (chunk) => {
+      child.stderr.on('data', (_chunk) => {
+        void _chunk;
         // Logs/thoughts streaming
         // console.error(`[PY-BRIDGE] ${chunk.toString().trim()}`);
       });
 
-      child.on('close', (code) => {
+      child.on('close', (_code) => {
+        void _code;
         this.activeProcesses.delete(runId);
         try {
           const parsed = JSON.parse(stdoutData);

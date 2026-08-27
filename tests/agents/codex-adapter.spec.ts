@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import type { AgentRuntimeContext, WorkPackage } from '@co/contracts';
+import type { AgentRuntimeContext, WorkPackage, ToolGateway } from '@co/contracts';
 import { CodexAdapter } from '@co/agents';
 
 const ctx: AgentRuntimeContext = {
@@ -39,10 +39,10 @@ describe('CodexAdapter', () => {
 
   it('maps HTTP 429 to INTERRUPTED', async () => {
     const mockCreate = vi.fn().mockRejectedValueOnce({ status: 429 });
-    const factory = (key: string) => ({
+    const factory = () => ({
       chat: { completions: { create: mockCreate } },
     });
-    const mockGateway = { execute: vi.fn() } as any;
+    const mockGateway = { execute: vi.fn() } as unknown as ToolGateway;
     const adapter = new CodexAdapter(mockGateway, factory);
     const handle = await adapter.execute(wp, ctx);
 
@@ -54,10 +54,10 @@ describe('CodexAdapter', () => {
 
   it('maps HTTP 401 to FAILED (CRITICAL)', async () => {
     const mockCreate = vi.fn().mockRejectedValueOnce({ status: 401 });
-    const factory = (key: string) => ({
+    const factory = () => ({
       chat: { completions: { create: mockCreate } },
     });
-    const mockGateway = { execute: vi.fn() } as any;
+    const mockGateway = { execute: vi.fn() } as unknown as ToolGateway;
     const adapter = new CodexAdapter(mockGateway, factory);
     const handle = await adapter.execute(wp, ctx);
 
@@ -69,10 +69,10 @@ describe('CodexAdapter', () => {
 
   it('maps HTTP 500 to FAILED (HIGH)', async () => {
     const mockCreate = vi.fn().mockRejectedValueOnce({ status: 500 });
-    const factory = (key: string) => ({
+    const factory = () => ({
       chat: { completions: { create: mockCreate } },
     });
-    const mockGateway = { execute: vi.fn() } as any;
+    const mockGateway = { execute: vi.fn() } as unknown as ToolGateway;
     const adapter = new CodexAdapter(mockGateway, factory);
     const handle = await adapter.execute(wp, ctx);
 
@@ -94,7 +94,7 @@ describe('CodexAdapter', () => {
       capturedKey = key;
       return { chat: { completions: { create: mockCreate } } };
     };
-    const mockGateway = { execute: vi.fn() } as any;
+    const mockGateway = { execute: vi.fn() } as unknown as ToolGateway;
     const adapter = new CodexAdapter(mockGateway, factory);
 
     const handle = await adapter.execute(wp, ctx);

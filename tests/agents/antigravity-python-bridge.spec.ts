@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AntigravityPythonBridge } from '../../packages/agents/src/antigravity/antigravity-python-bridge.js';
-import type { AgentRuntimeContext, WorkPackage, AgentRunResult } from '@co/contracts';
+import type { AgentRuntimeContext, WorkPackage } from '@co/contracts';
 import { EventEmitter } from 'events';
 
 const mockSpawn = vi.hoisted(() => vi.fn());
@@ -20,15 +20,21 @@ describe('AntigravityPythonBridge', () => {
   const ctx: AgentRuntimeContext = { correlationId: 'c1', workflowRunId: 'r1', attemptId: 'a1', secretRefs: [] };
 
   let bridge: AntigravityPythonBridge;
-  let mockChildProcess: any;
+  let mockChildProcess: EventEmitter & {
+    stdin: { write: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> };
+    stdout: EventEmitter;
+    stderr: EventEmitter;
+    kill: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     bridge = new AntigravityPythonBridge();
-    mockChildProcess = new EventEmitter();
-    mockChildProcess.stdin = { write: vi.fn(), end: vi.fn() };
-    mockChildProcess.stdout = new EventEmitter();
-    mockChildProcess.stderr = new EventEmitter();
-    mockChildProcess.kill = vi.fn();
+    mockChildProcess = Object.assign(new EventEmitter(), {
+      stdin: { write: vi.fn(), end: vi.fn() },
+      stdout: new EventEmitter(),
+      stderr: new EventEmitter(),
+      kill: vi.fn(),
+    });
     mockSpawn.mockReturnValue(mockChildProcess);
   });
 

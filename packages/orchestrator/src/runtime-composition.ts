@@ -1,5 +1,7 @@
 import { ConcreteStructuredReviewer } from './concrete-structured-reviewer.js';
-import { RunCoordinator, InMemoryEventLedger } from '@co/workflow';
+import { RunCoordinator } from '@co/workflow';
+// Import TrustedReconciliationIssuer directly from the module since it's not exported in the public index
+import { TrustedReconciliationIssuer } from '@co/workflow/dist/run-coordinator.js';
 import { CodexAdapter, AntigravityPythonBridge } from '@co/agents';
 import {
   ActionClassifyingPolicyEngine,
@@ -28,6 +30,7 @@ import {
  *
  *   issuer            → composition root only (create authority events)
  *   ownerProcessor    → composition root only (apply events, revoke grants)
+ *   reconIssuer       → composition root only (mint safe-to-retry reconciliation outcomes)
  *   gateway           → passed to CodexAdapter; also available for direct test use
  *   codexAdapter      → passed to MinimalWorkflowEngine
  *   auditLedger       → read by evidence/verification layer
@@ -41,6 +44,8 @@ export interface RuntimeComposition {
   readonly reviewer: ConcreteStructuredReviewer;
   /** Control-plane issuer — composition root only */
   readonly issuer: TrustedOwnerAuthorityIssuer;
+  /** Control-plane reconciliation issuer — composition root only */
+  readonly reconIssuer: TrustedReconciliationIssuer;
   /** Event processor — composition root only */
   readonly ownerProcessor: OwnerEventProcessor;
   /** Production gateway (ActionPolicyEvaluator-enforced) */
@@ -82,6 +87,11 @@ export function createRuntimeComposition(options: {
     options.taskId,
   );
 
+  // 1b. Control-plane: TrustedReconciliationIssuer (issuer of reconciliation outcomes)
+  const reconIssuer = new TrustedReconciliationIssuer(
+    options.ownerRef ?? 'owner:system'
+  );
+
   // 2. Control-plane: OwnerEventProcessor (validates events, manages grant state)
   const ownerProcessor = new OwnerEventProcessor({
     taskId: options.taskId,
@@ -113,11 +123,12 @@ export function createRuntimeComposition(options: {
   // 9. Agent adapter — receives gateway only; no raw adapter refs, no processor
   const codexAdapter = new CodexAdapter(gateway);
 
-    const reviewer = new ConcreteStructuredReviewer();
+  const reviewer = new ConcreteStructuredReviewer();
   const runCoordinator = new RunCoordinator(new AntigravityPythonBridge(), options.ledger, reviewer, options.taskId);
 
   return {
     issuer,
+    reconIssuer,
     ownerProcessor,
     runCoordinator,
     reviewer,

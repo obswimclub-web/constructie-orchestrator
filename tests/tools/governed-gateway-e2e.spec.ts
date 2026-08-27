@@ -1,14 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
-import type { ToolAdapter, ToolExecutionRequest, ToolExecutionResult } from '@co/contracts';
+import type { ToolAdapter, ToolExecutionRequest, ToolExecutionResult, AuthorizedToolRequest } from '@co/contracts';
 import { createProductionGateway } from '@co/tools';
 import {
   ActionClassifyingPolicyEngine,
   InMemoryExecutionAuditLedger,
   OwnerEventProcessor,
   TrustedOwnerAuthorityIssuer,
-  type ActionRequest,
-  type ActionPolicyDecision,
 } from '@co/policy';
 
 const TASK_ID = 'gw-task-001';
@@ -16,7 +14,7 @@ const OWNER_REF = 'owner:test';
 
 class MockAdapter implements ToolAdapter {
   constructor(public toolId: string = 'mock-tool') {}
-  executeAuthorized = vi.fn<[any], Promise<ToolExecutionResult>>();
+  executeAuthorized = vi.fn<[AuthorizedToolRequest], Promise<ToolExecutionResult>>();
 }
 
 function req(overrides: Partial<ToolExecutionRequest> = {}): ToolExecutionRequest {
@@ -66,7 +64,7 @@ describe('GovernedToolGateway E2E', () => {
   });
 
   it('GW-2: valid token -> ALLOW, RESERVED -> CONSUMED on SUCCEEDED', async () => {
-    const { gateway, adapter, ledger, issuer, processor } = setup();
+    const { gateway, adapter, issuer, processor } = setup();
     processor.applyOwnerAuthorityEvent(issuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED', taskId: 'task-1', boundToGate: 'COMMIT', boundToAction: 'GIT_COMMIT' }));
 
     // Simulate successful execution

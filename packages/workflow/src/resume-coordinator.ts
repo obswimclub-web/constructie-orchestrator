@@ -1,6 +1,5 @@
 import type { AgentAdapter, AgentRunResult, AgentRunStatus, AgentRuntimeContext, WorkPackage } from '@co/contracts';
 import type { Attempt, AttemptState, WorkItem, WorkItemLifecycleState } from '@co/domain';
-import { randomUUID } from 'node:crypto';
 
 export interface ResumeWorkStore {
   transitionAttempt(input: { attemptId: string; to: AttemptState }): Promise<Attempt>;
@@ -75,7 +74,7 @@ export class ResumeCoordinator {
       result = {
         schemaVersion: '1.0.0',
         runRef,
-        status: status as any,
+        status: status as AgentRunResult['status'],
         summary: 'Resume completed',
         artifacts,
         evidence,

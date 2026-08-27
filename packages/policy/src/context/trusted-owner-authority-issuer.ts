@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Environment, ExecutionGate, OwnerAuthorityToken } from '../types.js';
+import type { ExecutionGate, OwnerAuthorityToken } from '../types.js';
 import type {
   ApprovedScopeEventFields,
   GateTransitionEventFields,

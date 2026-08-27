@@ -1,12 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { RunCoordinator, type EventLedger, type StructuredReviewer } from '../../packages/workflow/src/run-coordinator.js';
-import type { AgentBridge, WorkPackage, AgentRunResult, AgentRunHandle } from '@co/contracts';
+import type { AgentBridge, WorkPackage, AgentRunHandle } from '@co/contracts';
 import type { ProjectEvent } from '@co/domain';
-import { randomUUID } from 'crypto';
 
 describe('RunCoordinator Reconciliation', () => {
   it('transitions to RECONCILING for ambiguous transport outcome without blind retries', async () => {
-    let dispatchCount = 0;
     const bridge: AgentBridge = {
       dispatch: vi.fn().mockResolvedValue({ runId: 'r1', status: 'RUNNING' } as AgentRunHandle),
       getStatus: vi.fn().mockResolvedValue('RUNNING'), // Causes timeout

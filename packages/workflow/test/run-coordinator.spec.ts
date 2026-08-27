@@ -2,8 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { RunCoordinator, type EventLedger, type StructuredReviewer } from '../src/run-coordinator.js';
 import type { AgentBridge, WorkPackage, AgentRunHandle, AgentRunResult } from '@co/contracts';
 import type { ProjectEvent } from '@co/domain';
-import { TrustedOwnerAuthorityIssuer } from '@co/policy';
-import { randomUUID } from 'crypto';
+import { TrustedOwnerAuthorityIssuer, type SealedOwnerAuthorityEvent } from '@co/policy';
 
 const makeMinimalWp = (overrides?: Partial<WorkPackage>): WorkPackage => ({
   schemaVersion: '1.0.0', workPackageId: 'wp-1', version: 1, projectId: 'proj-1',
@@ -58,7 +57,7 @@ describe('RunCoordinator', () => {
     const reviewer: StructuredReviewer = { reviewExecution: vi.fn() };
     const coordinator = new RunCoordinator(bridge, ledger, reviewer, 'task-1');
 
-    const forgedEvent: any = { eventType: 'OWNER_APPROVAL_GRANTED', taskId: 'task-1' /* missing brand */ };
+    const forgedEvent = { eventType: 'OWNER_APPROVAL_GRANTED', taskId: 'task-1' /* missing brand */ } as unknown as SealedOwnerAuthorityEvent;
 
     await expect(coordinator.resumeWithAuthority('run-1', forgedEvent))
       .rejects.toThrow('Untrusted owner event: Forgeable ProjectEvent rejected. Must be a SealedOwnerAuthorityEvent.');

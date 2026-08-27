@@ -1,6 +1,4 @@
 import { MinimalWorkflowEngine, type WorkflowWorkStore } from '../../packages/workflow/src/index.js';
-import { type Attempt, type AttemptState, type WorkItem, type WorkItemLifecycleState } from '@co/domain';
-import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { createRuntimeComposition } from '../../packages/orchestrator/src/index.js';
 
@@ -52,7 +50,7 @@ describe('Policy Enforcement E2E (Full Composition Root)', () => {
     };
 
     // Inject mock OpenAI factory into CodexAdapter via reflective access for test purposes
-    (comp.codexAdapter as any).openaiClientFactory = () => mockOpenAIClient;
+    (comp.codexAdapter as unknown as Record<string, unknown>).openaiClientFactory = () => mockOpenAIClient;
 
     // 3. Try to execute work package — NO token granted yet
     const workPackage = {
@@ -112,9 +110,9 @@ describe('Policy Enforcement E2E (Full Composition Root)', () => {
         choices: [{ message: { content: "\n```json\n{\"summary\": \"Committing changes\", \"artifacts\": [], \"toolProposals\": [{\"toolId\": \"git\", \"operationId\": \"git.commit\", \"targetResource\": \"repo://local\", \"environment\": \"LOCAL\", \"parameters\": { \"subcommand\": \"commit\" }}]}\n```\n" } }]
       })}}
     };
-    (comp.codexAdapter as any).openaiClientFactory = () => mockOpenAIClient;
+    (comp.codexAdapter as unknown as Record<string, unknown>).openaiClientFactory = () => mockOpenAIClient;
 
-    const workPackage: any = { workPackageId: 'wp-2', workItemId: taskId, projectId: 'proj-2', objective: 'Commit', authorityContextRef: 'auth://2', version: 1 };
+    const workPackage = { workPackageId: 'wp-2', workItemId: taskId, projectId: 'proj-2', objective: 'Commit', authorityContextRef: 'auth://2', version: 1 } as unknown as import('@co/contracts').WorkPackage;
 
     class FakeStore implements WorkflowWorkStore {
       workItem = { id: taskId, projectId: 'proj-2', lifecycleState: 'READY', targetGate: 'COMMIT', revision: 1, currentAttemptId: null, createdAt: new Date(), updatedAt: new Date(), requiredCapabilities: [] };
@@ -124,7 +122,7 @@ describe('Policy Enforcement E2E (Full Composition Root)', () => {
         this.workItem.lifecycleState = 'ASSIGNED';
         return { workItem: this.workItem, attempt: this.attempt };
       }
-      async bindAgentRun(input) { return this.attempt; }
+      async bindAgentRun() { return this.attempt; }
       async transitionAttempt(input) {
         this.attempt.state = input.to;
         return this.attempt;

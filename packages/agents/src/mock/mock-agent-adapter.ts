@@ -1,9 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
-  AgentRunResultSchema,
   WorkPackageSchema,
   type AgentAdapter,
-  type AgentAdapterIdentity,
   type AgentCancelRequest,
   type AgentCancelResult,
   type AgentResumeRequest,
@@ -64,6 +62,7 @@ export class MockAgentAdapter implements AgentAdapter {
     workPackage: WorkPackage,
     _runtimeContext: AgentRuntimeContext,
   ): Promise<AgentRunHandle> {
+    void _runtimeContext;
     const wp = WorkPackageSchema.parse(workPackage);
     const runId = randomUUID();
     const status = this.initialStatus(this.scenario);

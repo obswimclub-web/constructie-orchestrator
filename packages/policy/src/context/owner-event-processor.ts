@@ -120,15 +120,19 @@ export class OwnerEventProcessor {
    * This getter returns a stable object whose methods close over the processor instance.
    */
   public get readOnlyView(): ReadOnlyExecutionContext {
-    // Return a stable object bound to `this` via closures.
-    // Re-creating on each access is intentional: callers should store the reference.
-    const self = this;
+    // Capture individual fields to avoid aliasing `this`.
+    const getGate = () => this._gate;
+    const getEnvironment = () => this._environment;
+    const getApprovedFileScope = () => this._approvedFileScope;
+    const getGrants = () => this._grants;
+    const hasActiveGrant = (token: OwnerAuthorityToken) => this._hasActiveGrant(token);
+    const getAuditLog = () => this._auditLog;
     return {
-      get gate() { return self._gate; },
-      get environment() { return self._environment; },
-      get approvedFiles(): readonly string[] { return [...self._approvedFileScope]; },
+      get gate() { return getGate(); },
+      get environment() { return getEnvironment(); },
+      get approvedFiles(): readonly string[] { return [...getApprovedFileScope()]; },
       get activeAuthorities(): readonly AuthorityGrantView[] {
-        return [...self._grants.entries()].map(([id, g]) => ({
+        return [...getGrants().entries()].map(([id, g]) => ({
           grantId: id,
           token: g.token,
           taskId: g.taskId,
@@ -140,13 +144,13 @@ export class OwnerEventProcessor {
         }));
       },
       hasAuthority(token: OwnerAuthorityToken): boolean {
-        return self._hasActiveGrant(token);
+        return hasActiveGrant(token);
       },
       isFileApproved(filePath: string): boolean {
-        return self._approvedFileScope.has(filePath);
+        return getApprovedFileScope().has(filePath);
       },
       auditLog(): readonly { at: Date; event: string }[] {
-        return [...self._auditLog];
+        return [...getAuditLog()];
       },
     };
   }

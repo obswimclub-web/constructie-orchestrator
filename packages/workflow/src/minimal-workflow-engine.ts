@@ -191,7 +191,7 @@ export class MinimalWorkflowEngine {
       result = {
         schemaVersion: '1.0.0',
         runRef: { runId: run.runId },
-        status: status as any, // Cast or map status correctly
+        status: status as AgentRunResult['status'],
         summary: 'Execution completed',
         artifacts,
         evidence,

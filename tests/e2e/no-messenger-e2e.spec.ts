@@ -3,11 +3,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { RunCoordinator, type EventLedger, type StructuredReviewer } from '../../packages/workflow/src/run-coordinator.js';
 import type { AgentBridge, WorkPackage, AgentRunResult, AgentRunHandle } from '@co/contracts';
 import type { ProjectEvent } from '@co/domain';
-import { randomUUID } from 'crypto';
 
 describe('No Messenger E2E', () => {
   it('executes autonomous loop with repair, owner pause, and resume with post-approval dispatch', async () => {
-    let OWNER_MESSAGE_RELAY_COUNT = 0;
+    const OWNER_MESSAGE_RELAY_COUNT = 0;
 
     let dispatchCount = 0;
     const bridge: AgentBridge = {
@@ -25,7 +24,7 @@ describe('No Messenger E2E', () => {
     };
 
     const reviewer: StructuredReviewer = {
-      reviewExecution: async (result) => {
+      reviewExecution: async () => {
         if (dispatchCount === 1) return { decision: 'FAIL_REPAIRABLE', feedback: 'Needs fix' };
         if (dispatchCount === 2) return { decision: 'OWNER_DECISION_REQUIRED', feedback: 'Needs owner auth', pendingAction: 'generic_action', pendingGate: 'gate-1', pendingAuthorityType: 'OWNER_IMPLEMENTATION_APPROVED' };
         if (dispatchCount === 3) return { decision: 'PASS', nextAction: 'Next step' };
