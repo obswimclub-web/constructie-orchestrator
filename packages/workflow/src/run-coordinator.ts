@@ -9,10 +9,12 @@ export interface EventLedger {
 }
 
 export type RunState = 'STARTING' | 'RUNNING' | 'EVALUATING' | 'REPAIRING' | 'WAITING_FOR_OWNER' | 'RECONCILING' | 'CLOSED' | 'BLOCKED';
-export type ReviewDecision = 'PASS' | 'FAIL_REPAIRABLE' | 'OWNER_DECISION_REQUIRED' | 'AMBIGUOUS_SIDE_EFFECT' | 'BLOCKED' | 'COMPLETE';
+export type ReviewDecision = 'PASS' | 'FAIL_REPAIRABLE' | 'OWNER_DECISION_REQUIRED' | 'AMBIGUOUS_SIDE_EFFECT' | 'BLOCKED' | 'COMPLETE' | 'NEEDS_EVIDENCE';
+
+import type { ReviewRequest, ReviewVerdict } from '@co/contracts';
 
 export interface StructuredReviewer {
-  reviewExecution(result: AgentRunResult): Promise<{ decision: ReviewDecision; feedback?: string; pendingAction?: string; pendingGate?: string; pendingAuthorityType?: string; nextAction?: string; }>;
+  reviewExecution(result: AgentRunResult, request?: ReviewRequest): Promise<ReviewVerdict>;
 }
 
 export interface RunCoordinatorOptions {
@@ -197,29 +199,45 @@ export class RunCoordinator {
         }
 
         let result: AgentRunResult | undefined;
-        let review: { decision: ReviewDecision; feedback?: string; pendingAction?: string; pendingGate?: string; pendingAuthorityType?: string; nextAction?: string; };
+        let review: ReviewVerdict;
 
         if (classifyStatus(status) === 'NON_TERMINAL') {
           try { await this.bridge.cancel(handle); } catch { /* best-effort cancel */ }
-          review = { decision: 'AMBIGUOUS_SIDE_EFFECT', feedback: 'TIMEOUT_AMBIGUOUS' };
+          review = { decision: 'AMBIGUOUS_SIDE_EFFECT', findings: ['TIMEOUT_AMBIGUOUS'], lineage: [], reviewDepth: 'SYSTEM' };
         } else if (classifyStatus(status) === 'AMBIGUOUS') {
-          review = { decision: 'AMBIGUOUS_SIDE_EFFECT', feedback: 'TRANSPORT_LOST_AMBIGUOUS' };
+          review = { decision: 'AMBIGUOUS_SIDE_EFFECT', findings: ['TRANSPORT_LOST_AMBIGUOUS'], lineage: [], reviewDepth: 'SYSTEM' };
         } else {
           try {
             result = await this.bridge.getResult(handle);
             if (result.status === 'CANCELLED' || result.status === 'INTERRUPTED') {
-              review = { decision: 'AMBIGUOUS_SIDE_EFFECT', feedback: 'Cancelled' };
+              review = { decision: 'AMBIGUOUS_SIDE_EFFECT', findings: ['Cancelled'], lineage: [], reviewDepth: 'SYSTEM' };
             } else if (result.status === 'FAILED') {
-              review = { decision: 'FAIL_REPAIRABLE', feedback: 'Run failed naturally, repairing.' };
+              review = { decision: 'FAIL_REPAIRABLE', findings: ['Run failed naturally, repairing.'], lineage: [], reviewDepth: 'SYSTEM' };
             } else {
-              review = await this.reviewer.reviewExecution(result);
+              const request: ReviewRequest = {
+                projectId,
+                workflowRunId,
+                workPackageId: currentWp.workPackageId,
+                attemptId,
+                scopeRevision: 'v1',
+                contractRevision: 'v1',
+                mocRevision: 'v1',
+                artifactHashes: {},
+                authoritySnapshot: {},
+                requirementRefs: [],
+                evidenceRefs: [],
+                verificationRefs: [],
+                ledgerRevision: revision
+              };
+              review = await this.reviewer.reviewExecution(result, request);
             }
-          } catch {
-             review = { decision: 'AMBIGUOUS_SIDE_EFFECT', feedback: 'TRANSPORT_LOST_AMBIGUOUS' };
+          } catch (e) {
+            console.error("RunCoordinator error in evaluating:", e);
+             review = { decision: 'AMBIGUOUS_SIDE_EFFECT', findings: ['TRANSPORT_LOST_AMBIGUOUS'], lineage: [], reviewDepth: 'SYSTEM' };
           }
         }
 
-        await emit('RUN_COMPLETED', { attemptId, result: result ?? { status: 'FAILED', summary: review.feedback } });
+        await emit('RUN_COMPLETED', { attemptId, result: result ?? { status: 'FAILED', summary: review.findings.join(';') } });
         state = 'EVALUATING';
 
         if (review.decision === 'FAIL_REPAIRABLE') {
@@ -234,9 +252,27 @@ export class RunCoordinator {
           currentWp = {
             ...currentWp,
             workPackageId: randomUUID(),
-            objective: `Repair feedback: ${review.feedback}\nOriginal: ${currentWp.objective}`
+            objective: `Repair feedback: ${review.findings.join(';')}\nOriginal: ${currentWp.objective}`
           };
-          await emit('EVALUATION_FAILED_REPAIRABLE', { attemptId, repairAttempts });
+          if (review.repairPackage) {
+             currentWp = { ...currentWp, objective: currentWp.objective + `\nRepair Constraints: Allowed[${review.repairPackage.allowedScope.join(',')}], Forbidden[${review.repairPackage.forbiddenActions.join(',')}]` };
+          }
+          await emit('EVALUATION_FAILED_REPAIRABLE', { attemptId, repairAttempts, repairPackage: review.repairPackage });
+        } else if (review.decision === 'NEEDS_EVIDENCE') {
+          if (repairAttempts >= this.options.maxRepairAttempts) {
+            state = 'BLOCKED';
+            await emit('RUN_BLOCKED', { attemptId, reason: 'MAX_REPAIR_ATTEMPTS_EXCEEDED' });
+            continue;
+          }
+          repairAttempts++;
+          state = 'REPAIRING';
+          attemptId = randomUUID();
+          currentWp = {
+            ...currentWp,
+            workPackageId: randomUUID(),
+            objective: `Needs evidence: ${review.findings.join(';')}\nOriginal: ${currentWp.objective}`
+          };
+          await emit('EVALUATION_NEEDS_EVIDENCE', { attemptId, repairAttempts });
         } else if (review.decision === 'AMBIGUOUS_SIDE_EFFECT') {
           state = 'RECONCILING';
           await emit('EVALUATION_AMBIGUOUS_SIDE_EFFECT', { attemptId });

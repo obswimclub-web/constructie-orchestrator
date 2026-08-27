@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { RunCoordinator, type EventLedger, type StructuredReviewer } from '../src/run-coordinator.js';
+import { RunCoordinator, type EventLedger, type ReviewerBridge } from '../src/run-coordinator.js';
 import type { AgentBridge, WorkPackage, AgentRunHandle, AgentRunResult } from '@co/contracts';
 import type { ProjectEvent } from '@co/domain';
 import { TrustedOwnerAuthorityIssuer, type SealedOwnerAuthorityEvent } from '@co/policy';
@@ -28,7 +28,7 @@ describe('RunCoordinator', () => {
     };
 
     const reviewer: StructuredReviewer = {
-      reviewExecution: vi.fn().mockResolvedValue({ decision: 'COMPLETE' })
+      reviewExecution: vi.fn().mockResolvedValue({ decision: 'PASS', findings: [], evidenceRefs: [], nextAction: 'done' })
     };
 
     const appendedEvents: ProjectEvent[] = [];
@@ -44,11 +44,12 @@ describe('RunCoordinator', () => {
     expect(bridge.dispatch).toHaveBeenCalled();
     expect(bridge.getResult).toHaveBeenCalled();
 
-    expect(appendedEvents).toHaveLength(4);
+    expect(appendedEvents).toHaveLength(5);
     expect(appendedEvents[0]!.eventType).toBe('RUN_STARTED');
     expect(appendedEvents[1]!.eventType).toBe('RUN_DISPATCHED');
     expect(appendedEvents[2]!.eventType).toBe('RUN_COMPLETED');
-    expect(appendedEvents[3]!.eventType).toBe('RUN_CLOSED');
+    expect(appendedEvents[3]!.eventType).toBe('EVALUATION_PASSED');
+    expect(appendedEvents[4]!.eventType).toBe('RUN_CLOSED');
   });
 
   it('rejects forged OWNER_APPROVAL_GRANTED events (missing brand)', async () => {
@@ -82,10 +83,12 @@ describe('RunCoordinator', () => {
 
     const reviewer: StructuredReviewer = {
       reviewExecution: vi.fn().mockResolvedValue({
-        decision: 'OWNER_DECISION_REQUIRED',
+        decision: 'OWNER_REQUIRED',
+        findings: ['Needs owner'],
         pendingAction: 'act-1',
         pendingGate: 'gate-1',
         pendingAuthorityType: 'OWNER_IMPLEMENTATION_APPROVED',
+        evidenceRefs: []
       }),
     };
 
@@ -147,8 +150,8 @@ describe('RunCoordinator', () => {
     };
     const reviewerComplete: StructuredReviewer = {
       reviewExecution: vi.fn()
-        .mockResolvedValueOnce({ decision: 'OWNER_DECISION_REQUIRED', pendingAction: 'act-1', pendingGate: 'gate-1', pendingAuthorityType: 'OWNER_IMPLEMENTATION_APPROVED' })
-        .mockResolvedValue({ decision: 'COMPLETE' }),
+        .mockResolvedValueOnce({ decision: 'OWNER_REQUIRED', findings: ['Needs owner'], pendingAction: 'act-1', pendingGate: 'gate-1', pendingAuthorityType: 'OWNER_IMPLEMENTATION_APPROVED', evidenceRefs: [] })
+        .mockResolvedValue({ decision: 'PASS', findings: ['COMPLETE'], evidenceRefs: [] }),
     };
     const coordinator2 = new RunCoordinator(bridge, ledger2, reviewerComplete, canonicalTaskId, { timeoutMs: 50, intervalMs: 10 });
     await coordinator2.execute(makeMinimalWp({ workItemId }), workflowRunId, 'corr-2', 'proj-1');

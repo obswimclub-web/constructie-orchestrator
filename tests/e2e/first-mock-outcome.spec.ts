@@ -202,6 +202,14 @@ describe('BOOT-009 first mock end-to-end outcome', () => {
     });
     expect(resolved.workItem.lifecycleState).toBe('COMPLETED');
 
+
+    ['CMO-01', 'CMO-02', 'CMO-05', 'CMO-14'].forEach(cmoId => {
+      evidenceStore.evidence.push({
+        id: cmoId, projectId: project.id, workItemId: resolved.workItem.id, artifactId: null,
+        claim: cmoId, sourceType: 'VERIFICATION', sourceRef: 'mock-recon', currentness: 'CURRENT', observedAt: now, createdAt: now,
+      });
+    });
+
     const reconciliation = new ReconciliationEngineV0().reconcile({
       project,
       workItem: resolved.workItem,

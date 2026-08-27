@@ -55,6 +55,7 @@ export class CodexAdapter implements AgentAdapter {
 
   constructor(
     private readonly gateway: ToolGateway,
+    private readonly agentId: string = 'codex-adapter',
     private readonly openaiClientFactory?: (apiKey: string) => any, // eslint-disable-line @typescript-eslint/no-explicit-any
   ) {}
 
@@ -143,7 +144,7 @@ export class CodexAdapter implements AgentAdapter {
       // MODEL_TEXT_IS_NOT_EXECUTABLE=true — only schema-valid proposals are executable.
       const structured = parseProviderOutput(content, {
         taskId: wp.workItemId,
-        agentId: 'codex-adapter',
+        agentId: this.agentId,
         workPackageRef: wp.workPackageId,
         correlationId: ctx.correlationId,
       });
@@ -157,7 +158,7 @@ export class CodexAdapter implements AgentAdapter {
           schemaVersion: TOOL_EXECUTION_REQUEST_SCHEMA_VERSION,
           requestId: randomUUID(),
           projectId: wp.projectId,
-          actorRef: 'codex-adapter',
+          actorRef: this.agentId,
           workItemRef: wp.workItemId,
           workPackageRef: wp.workPackageId,
           toolId: proposal.toolId,

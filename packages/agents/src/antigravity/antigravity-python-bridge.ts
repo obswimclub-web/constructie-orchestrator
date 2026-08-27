@@ -26,7 +26,8 @@ export class AntigravityPythonBridge implements AgentBridge {
 
   constructor(
     private readonly gatewayFactory: (attemptId: string) => GovernedToolGateway,
-    private readonly redactor: OutputRedactor
+    private readonly redactor: OutputRedactor,
+    private readonly agentId: string = 'agent:antigravity'
   ) {}
 
   public async dispatch(workPackage: WorkPackage, context: AgentRuntimeContext): Promise<AgentRunHandle> {
@@ -38,7 +39,7 @@ export class AntigravityPythonBridge implements AgentBridge {
     }
 
     const gateway = this.gatewayFactory(context.attemptId);
-    const ipcServer = new PerRunIpcServer(context, gateway, this.redactor, workPackage);
+    const ipcServer = new PerRunIpcServer(context, gateway, this.redactor, workPackage, this.agentId);
     await ipcServer.start();
     this.activeIpcServers.set(attemptId, ipcServer);
 

@@ -5,8 +5,8 @@ import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaEventLedger } from '@co/persistence';
-import { RunCoordinator, type StructuredReviewer } from '../../packages/workflow/src/run-coordinator.js';
-import type { AgentBridge, WorkPackage, AgentRunResult, AgentRunHandle } from '@co/contracts';
+import { RunCoordinator } from '../../packages/workflow/src/run-coordinator.js';
+import type { AgentBridge, WorkPackage, AgentRunResult, AgentRunHandle, StructuredReviewer } from '@co/contracts';
 
 const poolA = new pg.Pool({ connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/orchestrator' });
 const adapterA = new PrismaPg(poolA);
@@ -58,7 +58,7 @@ describe('RunCoordinator Restart/Resume E2E', () => {
     };
 
     const reviewerA: StructuredReviewer = {
-      reviewExecution: vi.fn().mockResolvedValue({ decision: 'OWNER_DECISION_REQUIRED', pendingAction: 'generic_action', pendingGate: 'gate-1', pendingAuthorityType: 'OWNER_IMPLEMENTATION_APPROVED' })
+reviewExecution: vi.fn().mockResolvedValue({ decision: 'OWNER_DECISION_REQUIRED', findings: ['Needs owner'], pendingAction: 'generic_action', pendingGate: 'gate-1', pendingAuthorityType: 'OWNER_IMPLEMENTATION_APPROVED', evidenceRefs: [] })
     };
 
     // canonicalTaskId is distinct from BOTH workflowRunId and workItemId — proving no fallback occurs
@@ -79,6 +79,7 @@ describe('RunCoordinator Restart/Resume E2E', () => {
     expect(bridgeCallCount).toBe(1);
 
     const eventsA = await prismaA.projectEvent.findMany({ where: { aggregateId: workflowRunId } });
+    console.log("EVENTS_A", eventsA.map(e => e.eventType));
     expect(eventsA.length).toBeGreaterThan(0);
     expect(eventsA.some(e => e.eventType === 'EVALUATION_OWNER_DECISION_REQUIRED')).toBe(true);
     expect(eventsA.some(e => e.eventType === 'RUN_CLOSED')).toBe(false);
@@ -107,7 +108,7 @@ describe('RunCoordinator Restart/Resume E2E', () => {
     };
 
     const reviewerB: StructuredReviewer = {
-      reviewExecution: vi.fn().mockResolvedValue({ decision: 'COMPLETE' })
+reviewExecution: vi.fn().mockResolvedValue({ decision: 'COMPLETE', findings: [], evidenceRefs: [] })
     };
 
     // coordinatorB uses the SAME canonicalTaskId — distinct from workflowRunId AND workItemId

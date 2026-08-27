@@ -7,6 +7,12 @@ export const COMPLETION_STATES = [
 ] as const;
 export type CompletionState = (typeof COMPLETION_STATES)[number];
 
+export interface ResidualScopeItem {
+  readonly id: string;
+  readonly description: string;
+  readonly type: 'UNRESOLVED_FINDING' | 'UNHANDLED_SIDE_EFFECT' | 'FAILED_VERIFICATION' | 'MISSING_EVIDENCE';
+}
+
 export interface CompletionDecision {
   readonly id: string;
   readonly projectId: string;
@@ -19,5 +25,6 @@ export interface CompletionDecision {
   readonly evidenceIds: readonly string[];
   readonly reconciliationRef: string;
   readonly rationaleCodes: readonly string[];
+  readonly residualScope: readonly ResidualScopeItem[];
   readonly decidedAt: Date;
 }

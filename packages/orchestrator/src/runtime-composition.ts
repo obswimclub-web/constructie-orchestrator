@@ -3,7 +3,7 @@ import { ConcreteStructuredReviewer } from './concrete-structured-reviewer.js';
 import { RunCoordinator } from '@co/workflow';
 // Import TrustedReconciliationIssuer directly from the module since it's not exported in the public index
 import { TrustedReconciliationIssuer } from '@co/workflow/dist/run-coordinator.js';
-import { CodexAdapter, AntigravityPythonBridge } from '@co/agents';
+import { CodexAdapter, AntigravityPythonBridge, OpenAIReviewerAdapter } from '@co/agents';
 import {
   ActionClassifyingPolicyEngine,
 
@@ -132,7 +132,9 @@ export function createRuntimeComposition(options: {
   // 9. Agent adapter — receives gateway only; no raw adapter refs, no processor
   const codexAdapter = new CodexAdapter(gateway);
 
-  const reviewer = new ConcreteStructuredReviewer();
+  const reviewerGateway = createProductionGateway(policyEngine, adapters, auditLedger, grantConsumer, redactor);
+  const reviewerAdapter = new OpenAIReviewerAdapter(reviewerGateway);
+  const reviewer = new ConcreteStructuredReviewer(reviewerAdapter);
   const runCoordinator = new RunCoordinator(new AntigravityPythonBridge((attemptId: string) => createProductionGateway(policyEngine, adapters, new PrismaActionAuditLedger(options.ledger, attemptId, options.projectId ?? 'default', options.taskId), grantConsumer, redactor), redactor), options.ledger, reviewer, options.taskId);
 
   return {

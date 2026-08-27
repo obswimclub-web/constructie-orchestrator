@@ -17,7 +17,8 @@ export class PerRunIpcServer {
     private readonly context: AgentRuntimeContext,
     private readonly gateway: GovernedToolGateway,
     private readonly redactor: OutputRedactor,
-    private readonly wp?: import('@co/contracts').WorkPackage
+    private readonly wp?: import('@co/contracts').WorkPackage,
+    private readonly agentId: string = 'agent:antigravity'
   ) {
     this.nonce = randomUUID();
     console.log("PerRunIpcServer constructor redactor:", this.redactor);
@@ -66,7 +67,7 @@ export class PerRunIpcServer {
         operationId: proposal.operation ?? proposal.tool,
         targetResource: 'repo://local',
         parameters: proposal.parameters,
-        actorRef: 'agent:antigravity',
+        actorRef: this.agentId,
         workItemRef: this.wp?.workItemId ?? this.context.workflowRunId,
         workPackageRef: this.wp?.workPackageId ?? this.context.workflowRunId,
         authorityContextRef: this.wp?.authorityContextRef ?? 'system',

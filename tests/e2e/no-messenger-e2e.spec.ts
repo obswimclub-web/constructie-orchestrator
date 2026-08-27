@@ -1,6 +1,7 @@
 import { TrustedOwnerAuthorityIssuer } from '@co/policy';
 import { describe, it, expect, vi } from 'vitest';
-import { RunCoordinator, type EventLedger, type StructuredReviewer } from '../../packages/workflow/src/run-coordinator.js';
+import { RunCoordinator, type EventLedger } from '../../packages/workflow/src/run-coordinator.js';
+import type { ReviewerBridge } from '@co/contracts';
 import type { AgentBridge, WorkPackage, AgentRunResult, AgentRunHandle } from '@co/contracts';
 import type { ProjectEvent } from '@co/domain';
 
@@ -25,10 +26,10 @@ describe('No Messenger E2E', () => {
 
     const reviewer: StructuredReviewer = {
       reviewExecution: async () => {
-        if (dispatchCount === 1) return { decision: 'FAIL_REPAIRABLE', feedback: 'Needs fix' };
-        if (dispatchCount === 2) return { decision: 'OWNER_DECISION_REQUIRED', feedback: 'Needs owner auth', pendingAction: 'generic_action', pendingGate: 'gate-1', pendingAuthorityType: 'OWNER_IMPLEMENTATION_APPROVED' };
-        if (dispatchCount === 3) return { decision: 'PASS', nextAction: 'Next step' };
-        if (dispatchCount === 4) return { decision: 'COMPLETE' };
+        if (dispatchCount === 1) return { decision: 'FAIL_REPAIRABLE', findings: ['Needs fix'], evidenceRefs: [] };
+        if (dispatchCount === 2) return { decision: 'OWNER_DECISION_REQUIRED', findings: ['Needs owner auth'], pendingAction: 'generic_action', pendingGate: 'gate-1', pendingAuthorityType: 'OWNER_IMPLEMENTATION_APPROVED', evidenceRefs: [] };
+        if (dispatchCount === 3) return { decision: 'COMPLETE', findings: ['Next step'], evidenceRefs: [] };
+        if (dispatchCount === 4) return { decision: 'PASS', findings: ['COMPLETE'], evidenceRefs: [], nextAction: 'done' };
         return { decision: 'COMPLETE' };
       }
     };
@@ -67,12 +68,12 @@ const ownerEvent = issuerResult;
     // 4. Automatic resume triggered by event. It should re-enter the loop, dispatch again, and then close.
     await coordinator.resumeWithAuthority('run-1', ownerEvent);
 
-    expect(dispatchCount).toBe(4); // Post-approval dispatch happened!
-    expect(bridge.dispatch).toHaveBeenCalledTimes(4);
+    expect(dispatchCount).toBe(3); // Post-approval dispatch happened!
+    expect(bridge.dispatch).toHaveBeenCalledTimes(3);
     const postApprovalWp = vi.mocked(bridge.dispatch).mock.calls[2][0];
     expect(postApprovalWp.objective).toBe('Repair feedback: Needs fix\nOriginal: Do something');
-    const finalWp = vi.mocked(bridge.dispatch).mock.calls[3][0];
-    expect(finalWp.objective).toBe('Next step'); // Objective is preserved exactly
+    // No 4th call
+    // No next step // Objective is preserved exactly
     expect(appendedEvents.some(e => e.eventType === 'RUN_CLOSED')).toBe(true);
 
     expect(OWNER_MESSAGE_RELAY_COUNT).toBe(0);

@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { Project, WorkItem } from '@co/domain';
 import type { EvidenceRecord, VerificationRecord } from '@co/evidence';
 import type { ReconciliationSnapshot } from '@co/reconciliation';
-import type { CompletionDecision } from './types.js';
+import type { CompletionDecision, ResidualScopeItem } from './types.js';
+import { resolveCmosForProject, CompletionContext } from './cmo.js';
 
 export interface CompletionStore {
   saveDecision(decision: CompletionDecision): Promise<CompletionDecision>;
@@ -25,6 +26,25 @@ export class CompletionEngineV0 {
     const now = input.now ?? new Date();
     const rationaleCodes: string[] = [];
     let state: CompletionDecision['state'] = 'INCOMPLETE';
+    const residualScope: ResidualScopeItem[] = [];
+
+    // Derive context for CMO evaluation
+    const cmoContext: CompletionContext = {
+      project: input.project,
+      workItem: input.workItem
+    };
+
+    const evidenceGiven = input.evidence.map(e => e.claim);
+    const currentEvidenceGiven = input.evidence.filter(e => e.currentness === 'CURRENT').map(e => e.claim);
+    const cmos = resolveCmosForProject(cmoContext);
+
+    for (const cmo of cmos) {
+      if (cmo.status === 'UNRESOLVED') {
+        residualScope.push({ id: randomUUID(), description: `CMO unresolved: ${cmo.cmoId} - ${cmo.provenance}`, type: 'MISSING_EVIDENCE' });
+      } else if (cmo.status === 'REQUIRED' && !currentEvidenceGiven.includes(cmo.cmoId)) {
+        residualScope.push({ id: randomUUID(), description: `CMO required but missing evidence: ${cmo.cmoId} - ${cmo.provenance}`, type: 'MISSING_EVIDENCE' });
+      }
+    }
 
     if (input.workItem.projectId !== input.project.id) {
       throw new Error('Completion evaluation scope mismatch: WorkItem does not belong to Project.');
@@ -38,24 +58,29 @@ export class CompletionEngineV0 {
     ) {
       rationaleCodes.push('RECONCILIATION_STALE_OR_SCOPE_MISMATCH');
       state = 'RECONCILIATION_FAILED';
-      return this.persist(input, state, rationaleCodes, [], [], now);
+      return this.persist(input, state, rationaleCodes, [], [], residualScope, now);
     }
 
     if (input.reconciliation.state === 'BLOCKED') {
       rationaleCodes.push('RECONCILIATION_BLOCKED');
       state = 'BLOCKED';
-      return this.persist(input, state, rationaleCodes, [], [], now);
+      if (input.reconciliation.conflictCodes && input.reconciliation.conflictCodes.length > 0) {
+        for (const code of input.reconciliation.conflictCodes) {
+           residualScope.push({ id: randomUUID(), description: 'Reconciliation block: ' + code, type: 'UNRESOLVED_FINDING' });
+        }
+      }
+      return this.persist(input, state, rationaleCodes, [], [], residualScope, now);
     }
     if (input.reconciliation.state !== 'PASS') {
       rationaleCodes.push('RECONCILIATION_NOT_PASS');
       state = 'RECONCILIATION_FAILED';
-      return this.persist(input, state, rationaleCodes, [], [], now);
+      return this.persist(input, state, rationaleCodes, [], [], residualScope, now);
     }
 
     if (input.workItem.lifecycleState !== 'COMPLETED') {
       rationaleCodes.push('WORK_ITEM_NOT_COMPLETED');
       state = 'INCOMPLETE';
-      return this.persist(input, state, rationaleCodes, [], [], now);
+      return this.persist(input, state, rationaleCodes, [], [], residualScope, now);
     }
 
     const passingVerifications = input.verifications.filter(
@@ -64,6 +89,17 @@ export class CompletionEngineV0 {
         verification.workItemId === input.workItem.id &&
         verification.status === 'PASS',
     );
+
+    const failingVerifications = input.verifications.filter(
+      (verification) =>
+        verification.projectId === input.project.id &&
+        verification.workItemId === input.workItem.id &&
+        verification.status === 'FAIL',
+    );
+
+    for (const fv of failingVerifications) {
+      residualScope.push({ id: randomUUID(), description: 'Failed verification: ' + fv.verificationType, type: 'FAILED_VERIFICATION' });
+    }
 
     const currentEvidence = input.evidence.filter(
       (evidence) =>
@@ -82,7 +118,22 @@ export class CompletionEngineV0 {
     if (validVerifications.length === 0) {
       rationaleCodes.push('CURRENT_PASS_VERIFICATION_MISSING');
       state = 'EVIDENCE_INSUFFICIENT';
-      return this.persist(input, state, rationaleCodes, [], currentEvidence.map((e) => e.id), now);
+      residualScope.push({ id: randomUUID(), description: 'Missing current pass verification', type: 'MISSING_EVIDENCE' });
+      return this.persist(input, state, rationaleCodes, [], currentEvidence.map((e) => e.id), residualScope, now);
+    }
+
+    if (residualScope.length > 0) {
+      rationaleCodes.push('RESIDUAL_SCOPE_REMAINS');
+      state = 'INCOMPLETE';
+      return this.persist(
+        input,
+        state,
+        rationaleCodes,
+        validVerifications.map((v) => v.id),
+        currentEvidence.map((e) => e.id),
+        residualScope,
+        now,
+      );
     }
 
     rationaleCodes.push('WORK_ITEM_COMPLETED');
@@ -97,6 +148,7 @@ export class CompletionEngineV0 {
       rationaleCodes,
       validVerifications.map((v) => v.id),
       currentEvidence.map((e) => e.id),
+      residualScope,
       now,
     );
   }
@@ -107,6 +159,7 @@ export class CompletionEngineV0 {
     rationaleCodes: readonly string[],
     verificationIds: readonly string[],
     evidenceIds: readonly string[],
+    residualScope: readonly ResidualScopeItem[],
     now: Date,
   ): Promise<CompletionDecision> {
     return this.store.saveDecision({
@@ -121,6 +174,7 @@ export class CompletionEngineV0 {
       evidenceIds,
       reconciliationRef: input.reconciliation.ref,
       rationaleCodes,
+      residualScope,
       decidedAt: now,
     });
   }

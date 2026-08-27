@@ -43,7 +43,7 @@ describe('CodexAdapter', () => {
       chat: { completions: { create: mockCreate } },
     });
     const mockGateway = { execute: vi.fn() } as unknown as ToolGateway;
-    const adapter = new CodexAdapter(mockGateway, factory);
+    const adapter = new CodexAdapter(mockGateway, 'codex-adapter', factory);
     const handle = await adapter.execute(wp, ctx);
 
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -58,7 +58,7 @@ describe('CodexAdapter', () => {
       chat: { completions: { create: mockCreate } },
     });
     const mockGateway = { execute: vi.fn() } as unknown as ToolGateway;
-    const adapter = new CodexAdapter(mockGateway, factory);
+    const adapter = new CodexAdapter(mockGateway, 'codex-adapter', factory);
     const handle = await adapter.execute(wp, ctx);
 
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -73,7 +73,7 @@ describe('CodexAdapter', () => {
       chat: { completions: { create: mockCreate } },
     });
     const mockGateway = { execute: vi.fn() } as unknown as ToolGateway;
-    const adapter = new CodexAdapter(mockGateway, factory);
+    const adapter = new CodexAdapter(mockGateway, 'codex-adapter', factory);
     const handle = await adapter.execute(wp, ctx);
 
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -95,7 +95,7 @@ describe('CodexAdapter', () => {
       return { chat: { completions: { create: mockCreate } } };
     };
     const mockGateway = { execute: vi.fn() } as unknown as ToolGateway;
-    const adapter = new CodexAdapter(mockGateway, factory);
+    const adapter = new CodexAdapter(mockGateway, 'codex-adapter', factory);
 
     const handle = await adapter.execute(wp, ctx);
 
