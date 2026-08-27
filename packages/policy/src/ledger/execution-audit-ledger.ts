@@ -16,18 +16,18 @@ import type {
 export class InMemoryExecutionAuditLedger implements ActionAuditLedger {
   private readonly _entries = new Map<string, AuditEntry>();
 
-  public recordProposed(entry: AuditEntryProposed): void {
+  public async recordProposed(entry: AuditEntryProposed): Promise<void> {
     this._entries.set(entry.actionId, {
       ...entry,
       executedAt: undefined,
-      executionResult: undefined,
+      executionResult: entry.decision.decision === 'DENY' ? 'NOT_EXECUTED' : undefined,
     });
   }
 
-  public recordExecuted(
+  public async recordExecuted(
     actionId: string,
-    result: 'SUCCEEDED' | 'FAILED' | 'DENIED' | 'NOT_EXECUTED',
-  ): void {
+    result: import('@co/contracts').ToolExecutionResult,
+  ): Promise<void> {
     const existing = this._entries.get(actionId);
     if (existing) {
       this._entries.set(actionId, {
@@ -38,7 +38,7 @@ export class InMemoryExecutionAuditLedger implements ActionAuditLedger {
     }
   }
 
-  public entries(): readonly AuditEntry[] {
+  public async entries(): Promise<readonly AuditEntry[]> {
     return [...this._entries.values()];
   }
 
@@ -47,6 +47,6 @@ export class InMemoryExecutionAuditLedger implements ActionAuditLedger {
   }
 
   public denied(): readonly AuditEntry[] {
-    return [...this._entries.values()].filter((e) => e.executionResult === 'NOT_EXECUTED');
+    return [...this._entries.values()].filter((e) => e.decision.decision === 'DENY');
   }
 }

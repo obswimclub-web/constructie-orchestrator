@@ -306,9 +306,9 @@ export interface ActionPolicyEvaluator {
 }
 
 export interface ActionAuditLedger {
-  recordProposed(entry: AuditEntryProposed): void;
-  recordExecuted(actionId: string, result: 'SUCCEEDED' | 'FAILED' | 'DENIED' | 'NOT_EXECUTED'): void;
-  entries(): readonly AuditEntry[];
+  recordProposed(entry: AuditEntryProposed): Promise<void>;
+  recordExecuted(actionId: string, result: import('@co/contracts').ToolExecutionResult): Promise<void>;
+  entries(): Promise<readonly AuditEntry[]>;
 }
 
 export interface AuditEntryProposed {
@@ -321,5 +321,5 @@ export interface AuditEntryProposed {
 
 export interface AuditEntry extends AuditEntryProposed {
   readonly executedAt?: Date | undefined;
-  readonly executionResult?: 'SUCCEEDED' | 'FAILED' | 'DENIED' | 'NOT_EXECUTED' | undefined;
+  readonly executionResult?: import('@co/contracts').ToolExecutionResult | 'NOT_EXECUTED' | undefined;
 }

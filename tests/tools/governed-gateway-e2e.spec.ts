@@ -1,3 +1,4 @@
+
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { ToolAdapter, ToolExecutionRequest, ToolExecutionResult, AuthorizedToolRequest } from '@co/contracts';
@@ -188,5 +189,48 @@ describe('GovernedToolGateway E2E', () => {
     expect(adapter.executeAuthorized).not.toHaveBeenCalled();
     const denied = ledger.denied();
     expect(denied[0]?.executionResult).toBe('NOT_EXECUTED');
+  });
+
+  it('GW-7: pre-exec persistence failure prevents adapter execution and fails closed', async () => {
+    const { gateway, adapter, ledger, issuer, processor } = setup();
+    processor.applyOwnerAuthorityEvent(issuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED', taskId: TASK_ID, boundToGate: 'COMMIT', boundToAction: 'GIT_COMMIT' }));
+
+    vi.spyOn(ledger, 'recordProposed').mockRejectedValue(new Error('DB Down'));
+
+    const request = req({ toolId: 'git', operationId: 'git.commit', parameters: { subcommand: 'commit' } });
+    const result = await gateway.execute(request);
+
+    expect(result.status).toBe('FAILED');
+    expect(result.summary).toContain('DB Down');
+    expect(adapter.executeAuthorized).not.toHaveBeenCalled();
+  });
+
+  it('GW-8: post-exec persistence failure returns UNKNOWN and requires reconciliation', async () => {
+    const { gateway, adapter, ledger, issuer, processor } = setup();
+    processor.applyOwnerAuthorityEvent(issuer.issueAuthorityEvent({ authorityType: 'OWNER_COMMIT_APPROVED', taskId: TASK_ID, boundToGate: 'COMMIT', boundToAction: 'GIT_COMMIT' }));
+
+    adapter.executeAuthorized.mockResolvedValue({
+      schemaVersion: '1.0.0', executionId: 'exec-5', requestId: 'req-5', toolId: 'git', operationId: 'git.commit',
+      status: 'SUCCEEDED', summary: 'Success', artifacts: [], evidenceCandidates: [], sideEffects: ['commit'], reconciliationRequired: false
+    });
+
+    vi.spyOn(ledger, 'recordExecuted').mockRejectedValue(new Error('DB Down Post'));
+
+    const request = req({ toolId: 'git', operationId: 'git.commit', parameters: { subcommand: 'commit' } });
+    const result = await gateway.execute(request);
+
+    expect(result.status).toBe('UNKNOWN');
+    expect(result.reconciliationRequired).toBe(true);
+    expect(result.summary).toContain('AUDIT PERSISTENCE FAILED');
+
+    expect(processor.readOnlyView.hasAuthority('OWNER_COMMIT_APPROVED')).toBe(false);
+    const grant = processor.readOnlyView.activeAuthorities.find(g => g.token === 'OWNER_COMMIT_APPROVED');
+    expect(grant?.status).not.toBe('CONSUMED');
+    expect(grant?.status).toBe('RECONCILIATION_REQUIRED');
+
+    // a second immediate execution using the same authority is denied/blocked pending reconciliation, and the adapter is not invoked a second time.
+    const secondResult = await gateway.execute(request);
+    expect(secondResult.status).toBe('DENIED');
+    expect(adapter.executeAuthorized).toHaveBeenCalledTimes(1); // not invoked a second time
   });
 });

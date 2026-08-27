@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@co/domain": "workspace:*",
+    "@co/policy": "workspace:*",
     "@prisma/client": "^7.0.0"
   },
   "devDependencies": {

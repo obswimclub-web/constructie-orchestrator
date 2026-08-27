@@ -53,6 +53,7 @@ export class GovernedToolGateway implements ToolGateway {
     adapters: readonly ToolAdapter[],
     private readonly auditLedger?: ActionAuditLedger,
     private readonly grantConsumer?: OwnerGrantConsumer,
+    private readonly redactor?: import('./security/output-redactor.js').OutputRedactor,
   ) {
     this.adapters = new Map(adapters.map((adapter) => [adapter.toolId, adapter]));
   }
@@ -81,13 +82,30 @@ export class GovernedToolGateway implements ToolGateway {
       reasonCode = actionDecision.policyRule;
       grantedByAuthorityId = actionDecision.grantedByAuthorityId;
 
-      this.auditLedger?.recordProposed({
-        actionId: actionRequest.actionId,
-        proposedAt: new Date(),
-        request: actionRequest,
-        classification: actionDecision.allClasses,
-        decision: actionDecision,
-      });
+      try {
+        await this.auditLedger?.recordProposed({
+          actionId: actionRequest.actionId,
+          proposedAt: new Date(),
+          request: actionRequest,
+          classification: actionDecision.allClasses,
+          decision: actionDecision,
+        });
+      } catch (err) {
+
+        return ToolExecutionResultSchema.parse({
+          schemaVersion: TOOL_EXECUTION_RESULT_SCHEMA_VERSION,
+          executionId: `audit-fail:${request.requestId}`,
+          requestId: request.requestId,
+          toolId: request.toolId,
+          operationId: request.operationId,
+          status: 'FAILED',
+          summary: `Pre-execution audit failed: ${err instanceof Error ? err.message : String(err)}`,
+          artifacts: [],
+          evidenceCandidates: [],
+          sideEffects: [],
+          reconciliationRequired: false,
+        });
+      }
 
       if (decisionAllow) {
         policyForAuthorized = {
@@ -115,7 +133,6 @@ export class GovernedToolGateway implements ToolGateway {
 
     // DENY: ToolAdapter is NEVER called
     if (!decisionAllow) {
-      if (actionId) this.auditLedger?.recordExecuted(actionId, 'NOT_EXECUTED');
 
       return ToolExecutionResultSchema.parse({
         schemaVersion: TOOL_EXECUTION_RESULT_SCHEMA_VERSION,
@@ -152,7 +169,6 @@ export class GovernedToolGateway implements ToolGateway {
       if (actionId && grantedByAuthorityId && this.grantConsumer) {
         this.grantConsumer.requireReconciliation(grantedByAuthorityId, actionId);
       }
-      if (actionId) this.auditLedger?.recordExecuted(actionId, 'FAILED');
       throw err;
     }
 
@@ -178,14 +194,27 @@ export class GovernedToolGateway implements ToolGateway {
       }
     }
 
+    const sanitized = this.redactor ? { ...parsed, summary: this.redactor.redact(parsed.summary), observedEffect: this.redactor.redact(parsed.observedEffect || ''), evidenceCandidates: parsed.evidenceCandidates?.map(e => ({ ...e, claimSupported: this.redactor!.redact(e.claimSupported) })) } : parsed;
     if (actionId) {
-      this.auditLedger?.recordExecuted(
-        actionId,
-        parsed.status === 'SUCCEEDED' ? 'SUCCEEDED' : 'FAILED',
-      );
+      try {
+        await this.auditLedger?.recordExecuted(
+          actionId,
+          sanitized,
+        );
+      } catch (err) {
+        if (grantedByAuthorityId && this.grantConsumer) {
+          this.grantConsumer.requireReconciliation(grantedByAuthorityId, actionId);
+        }
+        return ToolExecutionResultSchema.parse({
+          ...sanitized,
+          status: 'UNKNOWN',
+          summary: sanitized.summary + `\n[AUDIT PERSISTENCE FAILED: ${err instanceof Error ? err.message : String(err)}]`,
+          reconciliationRequired: true
+        });
+      }
     }
 
-    return parsed;
+    return sanitized;
   }
 }
 
@@ -201,8 +230,9 @@ export function createProductionGateway(
   adapters: readonly ToolAdapter[],
   auditLedger: ActionAuditLedger,
   grantConsumer?: OwnerGrantConsumer,
+  redactor?: import('./security/output-redactor.js').OutputRedactor
 ): GovernedToolGateway {
-  return new GovernedToolGateway(policy, adapters, auditLedger, grantConsumer);
+  return new GovernedToolGateway(policy, adapters, auditLedger, grantConsumer, redactor);
 }
 
 // ─── Bridge: ToolExecutionRequest → ActionRequest ────────────────────────────

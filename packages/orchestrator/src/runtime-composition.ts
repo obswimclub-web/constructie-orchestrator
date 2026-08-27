@@ -1,3 +1,4 @@
+import { StructuredGitAdapter, QualificationAdapter, OutputRedactor } from '@co/tools';
 import { ConcreteStructuredReviewer } from './concrete-structured-reviewer.js';
 import { RunCoordinator } from '@co/workflow';
 // Import TrustedReconciliationIssuer directly from the module since it's not exported in the public index
@@ -5,7 +6,7 @@ import { TrustedReconciliationIssuer } from '@co/workflow/dist/run-coordinator.j
 import { CodexAdapter, AntigravityPythonBridge } from '@co/agents';
 import {
   ActionClassifyingPolicyEngine,
-  InMemoryExecutionAuditLedger,
+
   OwnerEventProcessor,
   TrustedOwnerAuthorityIssuer,
   type ActionAuditLedger,
@@ -72,7 +73,8 @@ export interface RuntimeComposition {
  * PRODUCTION_RUNTIME_EXISTS=false (apps/api and apps/worker are stubs)
  * CANONICAL_RUNTIME_WIRING_TARGET=this function
  */
-import type { PrismaEventLedger } from '@co/persistence';
+import { PrismaEventLedger, PrismaActionAuditLedger } from '@co/persistence';
+import { randomUUID } from 'crypto';
 
 export function createRuntimeComposition(options: {
   ledger: PrismaEventLedger;
@@ -80,6 +82,9 @@ export function createRuntimeComposition(options: {
   ownerRef?: string;
   initialGate?: ExecutionGate;
   environment?: Environment;
+  attemptId?: string;
+  projectId?: string;
+  secrets?: string[];
 }): RuntimeComposition {
   // 1. Control-plane: TrustedOwnerAuthorityIssuer (issuer of canonical events)
   const issuer = new TrustedOwnerAuthorityIssuer(
@@ -103,7 +108,8 @@ export function createRuntimeComposition(options: {
   const policyView = ownerProcessor.readOnlyView;
 
   // 4. Audit ledger
-  const auditLedger = new InMemoryExecutionAuditLedger();
+  const attemptId = options.attemptId ?? randomUUID();
+  const auditLedger = new PrismaActionAuditLedger(options.ledger, attemptId, options.projectId ?? 'default', options.taskId);
 
   // 5. Policy engine — receives READ-ONLY view; no processor reference
   const policyEngine = new ActionClassifyingPolicyEngine(policyView);
@@ -114,17 +120,20 @@ export function createRuntimeComposition(options: {
   // 7. Tool adapters
   const adapters = [
     new SandboxFilesystemAdapter([]),
+    new StructuredGitAdapter(process.cwd()),
+    new QualificationAdapter(process.cwd()),
     // Future: ShellAdapter, GitAdapter, HttpAdapter
   ] as const;
 
   // 8. Production gateway — enforces ActionPolicyEvaluator (no StaticToolPolicy path)
-  const gateway = createProductionGateway(policyEngine, adapters, auditLedger, grantConsumer);
+  const redactor = new OutputRedactor(options.secrets ?? []);
+  const gateway = createProductionGateway(policyEngine, adapters, auditLedger, grantConsumer, redactor);
 
   // 9. Agent adapter — receives gateway only; no raw adapter refs, no processor
   const codexAdapter = new CodexAdapter(gateway);
 
   const reviewer = new ConcreteStructuredReviewer();
-  const runCoordinator = new RunCoordinator(new AntigravityPythonBridge(), options.ledger, reviewer, options.taskId);
+  const runCoordinator = new RunCoordinator(new AntigravityPythonBridge((attemptId: string) => createProductionGateway(policyEngine, adapters, new PrismaActionAuditLedger(options.ledger, attemptId, options.projectId ?? 'default', options.taskId), grantConsumer, redactor), redactor), options.ledger, reviewer, options.taskId);
 
   return {
     issuer,
