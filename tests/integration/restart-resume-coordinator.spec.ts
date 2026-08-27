@@ -1,13 +1,14 @@
+import { TrustedOwnerAuthorityIssuer } from '@co/policy';
 import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaEventLedger } from '@co/persistence';
-import { RunCoordinator } from '../../packages/workflow/src/run-coordinator.js';
+import { RunCoordinator, type StructuredReviewer } from '../../packages/workflow/src/run-coordinator.js';
 import type { AgentBridge, WorkPackage, AgentRunResult, AgentRunHandle } from '@co/contracts';
 
-const poolA = new pg.Pool({ connectionString: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/orchestrator' });
+const poolA = new pg.Pool({ connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/orchestrator' });
 const adapterA = new PrismaPg(poolA);
 const prismaA = new PrismaClient({ adapter: adapterA });
 
@@ -26,12 +27,11 @@ describe('RunCoordinator Restart/Resume E2E', () => {
     await prismaA.$disconnect();
   });
 
-  it('persists events, destroys in-memory state, and reconstructs to resume correctly', async () => {
+  it('persists events, destroys in-memory state, and reconstructs to resume with post-approval dispatch', async () => {
     const projectId = randomUUID();
     const workflowRunId = randomUUID();
     const correlationId = randomUUID();
 
-    // Setup concrete store
     await prismaA.project.create({
       data: {
         id: projectId,
@@ -42,80 +42,88 @@ describe('RunCoordinator Restart/Resume E2E', () => {
 
     const ledgerA = new PrismaEventLedger(prismaA);
 
-    // Mock bridge that returns OWNER_DECISION
     let bridgeCallCount = 0;
     const bridgeA: AgentBridge = {
       dispatch: vi.fn().mockResolvedValue({ runId: 'r1', status: 'RUNNING' } as AgentRunHandle),
-      getStatus: vi.fn().mockResolvedValue('RUNNING'),
+      getStatus: vi.fn().mockResolvedValue('COMPLETED'),
       getResult: vi.fn().mockImplementation(async () => {
         bridgeCallCount++;
         return {
           schemaVersion: '1.0.0', runRef: { runId: 'r1' }, status: 'COMPLETED',
-          summary: 'OWNER_DECISION: needs approval', actionsTaken: [], artifacts: [], findings: [], evidence: [],
+          summary: 'A', actionsTaken: [], artifacts: [], findings: [], evidence: [],
           unresolvedItems: [], requestedInputs: [], sideEffects: [], usage: { inputUnits: 0, outputUnits: 0, estimatedCost: 0, currency: 'USD' }
         } as AgentRunResult;
       }),
       cancel: vi.fn().mockResolvedValue(undefined),
     };
 
-    const coordinatorA = new RunCoordinator(bridgeA, ledgerA);
+    const reviewerA: StructuredReviewer = {
+      reviewExecution: vi.fn().mockResolvedValue({ decision: 'OWNER_DECISION_REQUIRED', pendingAction: 'generic_action', pendingGate: 'gate-1', pendingAuthorityType: 'OWNER_IMPLEMENTATION_APPROVED' })
+    };
+
+    // canonicalTaskId is distinct from BOTH workflowRunId and workItemId — proving no fallback occurs
+    const canonicalTaskId = 'task-canonical-1';
+
+    const coordinatorA = new RunCoordinator(bridgeA, ledgerA, reviewerA, canonicalTaskId, { timeoutMs: 50, intervalMs: 10 });
     const wp: WorkPackage = {
       schemaVersion: '1.0.0', workPackageId: 'wp-1', version: 1, projectId,
-      workItemId: randomUUID(), completionObjectRef: 'ref', objective: 'Do something',
+      workItemId: 'item-1', completionObjectRef: 'ref', objective: 'Do something',
       authoritativeInputs: [], scope: { refs: [] }, constraints: [], authorityContextRef: 'ctx',
       requiredCapabilities: [], allowedActions: [], forbiddenActions: [], toolsAllowed: [],
       expectedArtifactsOut: [], verificationRequirements: [], evidenceRequirements: [],
       dependencies: [], stopConditions: [],
     };
 
-    // 1. Initial run -> hits WAITING_FOR_OWNER -> writes to Prisma DB -> exits
     await coordinatorA.execute(wp, workflowRunId, correlationId, projectId);
 
     expect(bridgeCallCount).toBe(1);
 
-    // Assert it's actually in DB
     const eventsA = await prismaA.projectEvent.findMany({ where: { aggregateId: workflowRunId } });
     expect(eventsA.length).toBeGreaterThan(0);
     expect(eventsA.some(e => e.eventType === 'EVALUATION_OWNER_DECISION_REQUIRED')).toBe(true);
+    expect(eventsA.some(e => e.eventType === 'RUN_CLOSED')).toBe(false);
 
-    // 2. Destroy in-memory state
     await prismaA.$disconnect();
 
-    // 3. Create a second coordinator instance with a new DB connection and new bridge
-    const poolB = new pg.Pool({ connectionString: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/orchestrator' });
+    // Secondary coordinator
+    const poolB = new pg.Pool({ connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/orchestrator' });
     const adapterB = new PrismaPg(poolB);
     const prismaB = new PrismaClient({ adapter: adapterB });
     const ledgerB = new PrismaEventLedger(prismaB);
 
+    let bridgeBDispatchCount = 0;
     const bridgeB: AgentBridge = {
-      dispatch: vi.fn(), getStatus: vi.fn(), getResult: vi.fn(), cancel: vi.fn()
-    };
-    const coordinatorB = new RunCoordinator(bridgeB, ledgerB);
-
-    // 4. Canonical owner event arriving
-    const ownerEvent = {
-      id: randomUUID(),
-      projectId,
-      eventType: 'OWNER_APPROVAL_GRANTED',
-      aggregateType: 'RUN' as const,
-      aggregateId: workflowRunId,
-      aggregateRevision: eventsA.length + 1,
-      actorType: 'OWNER' as const,
-      actorId: 'owner-1',
-      correlationId,
-      causationId: null,
-      schemaVersion: 1,
-      payload: {},
-      occurredAt: new Date(),
+      dispatch: vi.fn().mockImplementation(async () => {
+        bridgeBDispatchCount++;
+        return { runId: 'r2', status: 'RUNNING' } as AgentRunHandle;
+      }),
+      getStatus: vi.fn().mockResolvedValue('COMPLETED'),
+      getResult: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0', runRef: { runId: 'r2' }, status: 'COMPLETED',
+        summary: 'B', actionsTaken: [], artifacts: [], findings: [], evidence: [],
+        unresolvedItems: [], requestedInputs: [], sideEffects: [], usage: { inputUnits: 0, outputUnits: 0, estimatedCost: 0, currency: 'USD' }
+      } as AgentRunResult),
+      cancel: vi.fn().mockResolvedValue(undefined),
     };
 
-    // 5. Resume and reconstruct from DB
-    await coordinatorB.resume(workflowRunId, ownerEvent);
+    const reviewerB: StructuredReviewer = {
+      reviewExecution: vi.fn().mockResolvedValue({ decision: 'COMPLETE' })
+    };
 
-    // 6. Assert new states were appended correctly to the ledger via Prisma
+    // coordinatorB uses the SAME canonicalTaskId — distinct from workflowRunId AND workItemId
+    const coordinatorB = new RunCoordinator(bridgeB, ledgerB, reviewerB, 'task-canonical-1', { timeoutMs: 50, intervalMs: 10 });
+
+    // Issuer is bound to the canonical task ID ('task-canonical-1'), NOT workflowRunId or workItemId
+    const issuer = new TrustedOwnerAuthorityIssuer('owner-1', 'task-canonical-1');
+    const ownerEvent = issuer.issueAuthorityEvent({ authorityType: 'OWNER_IMPLEMENTATION_APPROVED', boundToAction: 'generic_action', boundToGate: 'gate-1' });
+
+    await coordinatorB.resumeWithAuthority(workflowRunId, ownerEvent);
+
+    expect(bridgeBDispatchCount).toBe(1);
+
     const eventsB = await prismaB.projectEvent.findMany({ where: { aggregateId: workflowRunId } });
-    expect(eventsB.length).toBeGreaterThan(eventsA.length);
     expect(eventsB.some(e => e.eventType === 'RUN_RESUMED')).toBe(true);
+    expect(eventsB.some(e => e.eventType === 'RUN_STARTED')).toBe(true);
     expect(eventsB.some(e => e.eventType === 'RUN_CLOSED')).toBe(true);
 
     await prismaB.$disconnect();

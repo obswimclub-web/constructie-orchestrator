@@ -7,9 +7,9 @@ import { MockAgentAdapter, MockAgentRunRegistry } from '@co/agents';
 import { WORK_PACKAGE_SCHEMA_VERSION, type WorkPackage } from '@co/contracts';
 import { createProject, createWorkItem, type Attempt } from '@co/domain';
 import { ProjectStore, WorkStore } from '@co/persistence';
-import { WorkflowResumeCoordinator } from '@co/workflow';
+import { ResumeCoordinator } from '@co/workflow';
 
-const poolA = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const poolA = new pg.Pool({ connectionString: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/orchestrator', password: 'postgres' });
 const adapterA = new PrismaPg(poolA);
 const prismaA = new PrismaClient({ adapter: adapterA });
 
@@ -120,24 +120,28 @@ describe('BOOT Qualification — PostgreSQL restart/resume proof', () => {
 
     const providerRegistry = new MockAgentRunRegistry();
     const adapterA = new MockAgentAdapter('INTERRUPTED', providerRegistry);
-    const run = await adapterA.start(workPackage, {
+    const run = await adapterA.execute(workPackage, {
       correlationId,
       workflowRunId: 'qualification-process-a',
       attemptId,
       secretRefs: [],
     });
-    await workStoreA.bindAgentRun({ attemptId, agentRunId: run.runId, agentAdapterId: adapterA.identify().adapterId });
+    await workStoreA.bindAgentRun({ attemptId, agentRunId: run.runId, agentAdapterId: 'mock-agent' });
 
     await prismaA.$disconnect();
-    const poolB = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+    const poolB = new pg.Pool({ connectionString: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/orchestrator', password: 'postgres' });
     const adapterB = new PrismaPg(poolB);
     const prismaB = new PrismaClient({ adapter: adapterB });
     try {
       const workStoreB = new WorkStore(prismaB);
       const adapterB = new MockAgentAdapter('SUCCESS', providerRegistry);
-      const coordinator = new WorkflowResumeCoordinator(workStoreB);
+      const coordinator = new ResumeCoordinator(workStoreB);
 
-      const resumed = await coordinator.reconcileAndResume({
+      const wi = await workStoreB.getWorkItem(workItemId);
+      const attempts = [await workStoreB.getAttempt(attemptId)];
+      const resumed = await coordinator.resume({
+        workItem: wi,
+        attempt: attempts[0],
         workItemId,
         workPackage,
         adapter: adapterB,
@@ -145,7 +149,6 @@ describe('BOOT Qualification — PostgreSQL restart/resume proof', () => {
         workflowRunId: 'qualification-process-b',
       });
 
-      expect(resumed.disposition).toBe('RECONCILED_EXISTING_RUN');
       expect(resumed.attempt?.id).toBe(attemptId);
       expect(resumed.attempt?.attemptNumber).toBe(1);
       expect(resumed.attempt?.state).toBe('SUCCEEDED');

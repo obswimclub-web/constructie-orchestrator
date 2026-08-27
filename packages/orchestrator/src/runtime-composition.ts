@@ -1,4 +1,6 @@
-import { CodexAdapter } from '@co/agents';
+import { ConcreteStructuredReviewer } from './concrete-structured-reviewer.js';
+import { RunCoordinator, InMemoryEventLedger } from '@co/workflow';
+import { CodexAdapter, AntigravityPythonBridge } from '@co/agents';
 import {
   ActionClassifyingPolicyEngine,
   InMemoryExecutionAuditLedger,
@@ -35,6 +37,8 @@ import {
  * The policyEngine receives ONLY the read-only view — not the processor.
  */
 export interface RuntimeComposition {
+  readonly runCoordinator: RunCoordinator;
+  readonly reviewer: ConcreteStructuredReviewer;
   /** Control-plane issuer — composition root only */
   readonly issuer: TrustedOwnerAuthorityIssuer;
   /** Event processor — composition root only */
@@ -63,7 +67,10 @@ export interface RuntimeComposition {
  * PRODUCTION_RUNTIME_EXISTS=false (apps/api and apps/worker are stubs)
  * CANONICAL_RUNTIME_WIRING_TARGET=this function
  */
+import type { PrismaEventLedger } from '@co/persistence';
+
 export function createRuntimeComposition(options: {
+  ledger: PrismaEventLedger;
   taskId: string;
   ownerRef?: string;
   initialGate?: ExecutionGate;
@@ -106,9 +113,14 @@ export function createRuntimeComposition(options: {
   // 9. Agent adapter — receives gateway only; no raw adapter refs, no processor
   const codexAdapter = new CodexAdapter(gateway);
 
+    const reviewer = new ConcreteStructuredReviewer();
+  const runCoordinator = new RunCoordinator(new AntigravityPythonBridge(), options.ledger, reviewer, options.taskId);
+
   return {
     issuer,
     ownerProcessor,
+    runCoordinator,
+    reviewer,
     gateway,
     codexAdapter,
     auditLedger,
