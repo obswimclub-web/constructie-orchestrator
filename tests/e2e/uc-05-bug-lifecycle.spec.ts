@@ -31,10 +31,10 @@ describe('UC-05 Bug Lifecycle', () => {
     };
 
     await runner.executeBlueprint('bug-bp', [wp]);
-    const events = (eventLedger as any).events;
-    const bugResolved = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.artifacts?.some((a: any) => a.kind === 'BUG_RESOLVED'));
-    const judgeAccepted = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.findings?.some((f: any) => f.type === 'JUDGE_VERDICT' && f.content === 'FIX ACCEPTED'));
-    const issueVerified = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.evidence?.some((ev: any) => ev.kind === 'ISSUE_VERIFIED_FIXED'));
+    const events = (eventLedger as unknown as { events: { eventType: string, payload?: { result?: { artifacts?: { kind: string }[] } } }[] }).events;
+    const bugResolved = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.artifacts?.some((a: { kind: string }) => a.kind === 'BUG_RESOLVED'));
+    const judgeAccepted = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.findings?.some((f: unknown) => f.type === 'JUDGE_VERDICT' && f.content === 'FIX ACCEPTED'));
+    const issueVerified = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.evidence?.some((ev: unknown) => ev.kind === 'ISSUE_VERIFIED_FIXED'));
     expect(bugResolved).toBe(true);
     expect(judgeAccepted).toBe(true);
     expect(issueVerified).toBe(true);

@@ -29,5 +29,5 @@ jobs:
         with:
           node-version: 24
       - uses: pnpm/action-setup@v4
-      - run: pnpm install --frozen-lockfile=false
-      - run: pnpm ci
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run ci

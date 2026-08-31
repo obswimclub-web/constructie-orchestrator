@@ -31,10 +31,10 @@ describe('UC-08 Project Health Audit', () => {
     };
 
     await runner.executeBlueprint('audit-bp', [wp]);
-    const events = (eventLedger as any).events;
-    const auditVerified = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.evidence?.some((ev: any) => ev.kind === 'AUDIT_FINDINGS_VERIFIED'));
-    const healthDetermined = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.findings?.some((f: any) => f.type === 'HEALTH_STATUS' && f.content === 'DETERMINED'));
-    const planGenerated = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.artifacts?.some((a: any) => a.kind === 'REMEDIATION_PLAN'));
+    const events = (eventLedger as unknown as { events: { eventType: string, payload?: { result?: { artifacts?: { kind: string }[] } } }[] }).events;
+    const auditVerified = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.evidence?.some((ev: unknown) => ev.kind === 'AUDIT_FINDINGS_VERIFIED'));
+    const healthDetermined = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.findings?.some((f: unknown) => f.type === 'HEALTH_STATUS' && f.content === 'DETERMINED'));
+    const planGenerated = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.artifacts?.some((a: { kind: string }) => a.kind === 'REMEDIATION_PLAN'));
     expect(auditVerified).toBe(true);
     expect(healthDetermined).toBe(true);
     expect(planGenerated).toBe(true);

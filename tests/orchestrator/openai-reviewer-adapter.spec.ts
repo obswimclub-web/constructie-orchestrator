@@ -22,12 +22,12 @@ describe('OpenAIReviewerAdapter Canonical', () => {
     expect(result.pendingGate).toBe('OWNER_PRECOMMIT');
   });
 
-  it('maps COMPLETED without inputs to PASS', async () => {
+  it('maps COMPLETED without inputs to COMPLETE (terminal)', async () => {
     const reviewer = new OpenAIReviewerAdapter();
     const result = await reviewer.evaluate(
        {} as unknown as ReviewRequest, 
        { status: 'COMPLETED', summary: 'done', requestedInputs: [] } as unknown as AgentRunResult
     );
-    expect(result.decision).toBe('PASS');
+    expect(result.decision).toBe('COMPLETE');
   });
 });

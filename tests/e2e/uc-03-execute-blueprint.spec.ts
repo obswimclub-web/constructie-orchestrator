@@ -31,9 +31,9 @@ describe('UC-03 Execute Blueprint', () => {
     };
 
     await runner.executeBlueprint('bp-1', [wp]);
-    const events = (eventLedger as any).events;
-    const bpComplete = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.artifacts?.some((a: any) => a.kind === 'BLUEPRINT_COMPLETE'));
-    const judgeAccepted = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.findings?.some((f: any) => f.type === 'JUDGE_VERDICT' && f.content === 'ACCEPTED'));
+    const events = (eventLedger as unknown as { events: { eventType: string, payload?: { result?: { artifacts?: { kind: string }[] } } }[] }).events;
+    const bpComplete = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.artifacts?.some((a: { kind: string }) => a.kind === 'BLUEPRINT_COMPLETE'));
+    const judgeAccepted = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.findings?.some((f: unknown) => f.type === 'JUDGE_VERDICT' && f.content === 'ACCEPTED'));
     expect(bpComplete).toBe(true);
     expect(judgeAccepted).toBe(true);
     writeSemanticEvidence('UC-03', {

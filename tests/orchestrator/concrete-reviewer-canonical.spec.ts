@@ -180,7 +180,7 @@ describe('SealedReconciliationOutcome — trusted reconciliation enforcement', (
   async function setupReconciling(): Promise<{ ledger: InMemoryEventLedger; coordinator: RunCoordinator }> {
     const ledger = new InMemoryEventLedger();
     const reviewer: StructuredReviewer = {
-      reviewExecution: vi.fn().mockResolvedValue({ decision: 'AMBIGUOUS_SIDE_EFFECT', findings: ['Timed out mid-commit' }),
+      reviewExecution: vi.fn().mockResolvedValue({ decision: 'AMBIGUOUS_SIDE_EFFECT', findings: ['Timed out mid-commit'] } ),
     };
     const bridge: AgentBridge = {
       dispatch: vi.fn().mockResolvedValue({ runId: 'r-recon', status: 'RUNNING' } as AgentRunHandle),
@@ -286,7 +286,7 @@ describe('SealedReconciliationOutcome — trusted reconciliation enforcement', (
     // First dispatch → AMBIGUOUS; second dispatch → COMPLETE
     const reviewerMock: StructuredReviewer = {
       reviewExecution: vi.fn()
-        .mockResolvedValueOnce({ decision: 'AMBIGUOUS_SIDE_EFFECT', findings: ['timed out' })
+        .mockResolvedValueOnce({ decision: 'AMBIGUOUS_SIDE_EFFECT', findings: ['timed out'] })
         .mockResolvedValue({ decision: 'COMPLETE' }),
     };
     const bridge: AgentBridge = {

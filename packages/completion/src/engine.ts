@@ -34,7 +34,7 @@ export class CompletionEngineV0 {
       workItem: input.workItem
     };
 
-    const evidenceGiven = input.evidence.map(e => e.claim);
+    // const evidenceGiven = input.evidence.map(e => e.claim);
     const currentEvidenceGiven = input.evidence.filter(e => e.currentness === 'CURRENT').map(e => e.claim);
     const cmos = resolveCmosForProject(cmoContext);
 

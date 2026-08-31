@@ -25,7 +25,7 @@ describe('UC-07 Recover from Failure E2E', () => {
         }
         return {
           schemaVersion: '1.0.0', runRef: ref, status: 'COMPLETED', summary: 'Resumed and finished',
-          actionsTaken: [], artifacts: [], findings: [], evidence: [], sideEffects: [], unresolvedItems: [], requestedInputs: [], usage: { inputUnits: 0, outputUnits: 0, estimatedCost: 0, currency: 'USD' }
+          actionsTaken: [], artifacts: [], findings: [], evidence: [{ id: 'ev-2', kind: 'info', content: 'new' }], sideEffects: [], unresolvedItems: [], requestedInputs: [], usage: { inputUnits: 0, outputUnits: 0, estimatedCost: 0, currency: 'USD' }
         };
       },
       cancel: async () => {}
@@ -48,7 +48,7 @@ describe('UC-07 Recover from Failure E2E', () => {
     const authEvent = issuer.issueAuthorityEvent({ authorityType: 'OWNER_IMPLEMENTATION_APPROVED', boundToAction: 'provide_input', boundToGate: 'OWNER_PRECOMMIT' });
     await coordinator2.resumeWithAuthority('run-1', authEvent);
 
-    const events = (eventLedger as any).events;
+    const events = (eventLedger as unknown as { events: { eventType: string, payload?: { result?: { artifacts?: { kind: string }[] } } }[] }).events;
     const closed = events.some(e => e.eventType === 'RUN_CLOSED');
     
     // Compute from observed state

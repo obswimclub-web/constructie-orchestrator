@@ -8,3 +8,15 @@ coverage/
 *.log
 artifacts/
 .tmp/
+
+# Generated build caches (never commit)
+*.tsbuildinfo
+
+# Temporary test repositories
+temp-repo*/
+
+# Evidence/proof artifacts (forensic-only, not source)
+proof_package.json
+proof_package.md
+uc-evidence.json
+

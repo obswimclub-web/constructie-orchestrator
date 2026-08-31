@@ -14,7 +14,7 @@ describe('UC-02 Existing Project Takeover', () => {
       getStatus: async () => 'COMPLETED',
       getResult: async (ref) => ({
         schemaVersion: '1.0.0', runRef: ref, status: 'COMPLETED', summary: 'Takeover analysis complete',
-        actionsTaken: [], artifacts: [{ id: 'art-state', kind: 'TAKEOVER_STATE', uri: 'memory://state.json' }], findings: [], evidence: [], sideEffects: [], unresolvedItems: [], requestedInputs: [], usage: { inputUnits: 0, outputUnits: 0, estimatedCost: 0, currency: 'USD' }
+        actionsTaken: [], artifacts: [{ id: 'art-state', kind: 'TAKEOVER_STATE', uri: 'memory://state.json' }], findings: [], evidence: [{ id: 'ev-1', kind: 'info', content: 'stuff' }], sideEffects: [], unresolvedItems: [], requestedInputs: [], usage: { inputUnits: 0, outputUnits: 0, estimatedCost: 0, currency: 'USD' }
       }),
       cancel: async () => {}
     };
@@ -29,9 +29,9 @@ describe('UC-02 Existing Project Takeover', () => {
     };
 
     await coordinator.execute(wp, 'run-1', 'corr-1', 'proj-1');
-    const events = (eventLedger as any).events;
+    const events = (eventLedger as unknown as { events: { eventType: string, payload?: { result?: { artifacts?: { kind: string }[] } } }[] }).events;
     const closed = events.some(e => e.eventType === 'RUN_CLOSED');
-    const takeoverReady = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.artifacts?.some((a: any) => a.kind === 'TAKEOVER_STATE'));
+    const takeoverReady = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.artifacts?.some((a: { kind: string }) => a.kind === 'TAKEOVER_STATE'));
     expect(closed).toBe(true);
     expect(takeoverReady).toBe(true);
     writeSemanticEvidence('UC-02', {

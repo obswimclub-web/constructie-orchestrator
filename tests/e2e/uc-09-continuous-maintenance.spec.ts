@@ -31,12 +31,12 @@ describe('UC-09 Continuous Maintenance', () => {
     };
 
     await runner.executeBlueprint('maintenance-bp', [wp]);
-    const events = (eventLedger as any).events;
-    const projOp = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.evidence?.some((ev: any) => ev.kind === 'PROJECT_OPERATIONAL'));
-    const hlthAcc = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.findings?.some((f: any) => f.type === 'HEALTH_STATUS' && f.content === 'ACCEPTABLE'));
-    const critZero = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.findings?.some((f: any) => f.type === 'CRITICAL_ISSUES' && f.content === '0'));
-    const loopAct = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.evidence?.some((ev: any) => ev.kind === 'MAINTENANCE_LOOP_ACTIVE'));
-    const truthCur = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.artifacts?.some((a: any) => a.kind === 'SOURCE_OF_TRUTH_CURRENT'));
+    const events = (eventLedger as unknown as { events: { eventType: string, payload?: { result?: { artifacts?: { kind: string }[] } } }[] }).events;
+    const projOp = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.evidence?.some((ev: unknown) => ev.kind === 'PROJECT_OPERATIONAL'));
+    const hlthAcc = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.findings?.some((f: unknown) => f.type === 'HEALTH_STATUS' && f.content === 'ACCEPTABLE'));
+    const critZero = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.findings?.some((f: unknown) => f.type === 'CRITICAL_ISSUES' && f.content === '0'));
+    const loopAct = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.evidence?.some((ev: unknown) => ev.kind === 'MAINTENANCE_LOOP_ACTIVE'));
+    const truthCur = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.artifacts?.some((a: { kind: string }) => a.kind === 'SOURCE_OF_TRUTH_CURRENT'));
     
     expect(projOp).toBe(true);
     expect(hlthAcc).toBe(true);

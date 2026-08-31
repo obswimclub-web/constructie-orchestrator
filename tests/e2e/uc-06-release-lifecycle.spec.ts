@@ -31,10 +31,10 @@ describe('UC-06 Release Lifecycle', () => {
     };
 
     await runner.executeBlueprint('release-bp', [wp]);
-    const events = (eventLedger as any).events;
-    const relComplete = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.artifacts?.some((a: any) => a.kind === 'RELEASE_COMPLETE'));
-    const prodVerified = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.findings?.some((f: any) => f.type === 'PROD_VERSION' && f.content === 'VERIFIED'));
-    const postHealthy = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.evidence?.some((ev: any) => ev.kind === 'POST_DEPLOY_HEALTHY'));
+    const events = (eventLedger as unknown as { events: { eventType: string, payload?: { result?: { artifacts?: { kind: string }[] } } }[] }).events;
+    const relComplete = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.artifacts?.some((a: { kind: string }) => a.kind === 'RELEASE_COMPLETE'));
+    const prodVerified = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.findings?.some((f: unknown) => f.type === 'PROD_VERSION' && f.content === 'VERIFIED'));
+    const postHealthy = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.evidence?.some((ev: unknown) => ev.kind === 'POST_DEPLOY_HEALTHY'));
     expect(relComplete).toBe(true);
     expect(prodVerified).toBe(true);
     expect(postHealthy).toBe(true);

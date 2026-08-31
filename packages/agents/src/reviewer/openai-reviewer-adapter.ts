@@ -40,6 +40,6 @@ export class OpenAIReviewerAdapter implements ReviewerAdapter {
        return { decision: 'NEEDS_EVIDENCE', findings: ['Missing evidence for completion'], reviewDepth: 'LLM', lineage: ['OpenAIReviewerAdapter'] };
     }
 
-    return { decision: 'PASS', findings: ['Passed validation'], reviewDepth: 'LLM', lineage: ['OpenAIReviewerAdapter'], nextAction: 'Proceed to next workflow step' };
+    return { decision: 'COMPLETE', findings: ['Passed validation'], reviewDepth: 'LLM', lineage: ['OpenAIReviewerAdapter'] };
   }
 }

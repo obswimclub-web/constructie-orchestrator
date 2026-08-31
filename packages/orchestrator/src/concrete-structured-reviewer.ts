@@ -1,6 +1,5 @@
 import type { AgentRunResult, ReviewVerdict, ReviewRequest, ReviewerAdapter } from '@co/contracts';
 import type { StructuredReviewer } from '@co/workflow';
-import type { ExecutionGate, OwnerAuthorityToken } from '@co/policy';
 
 export class ConcreteStructuredReviewer implements StructuredReviewer {
   constructor(private readonly adapter?: ReviewerAdapter) {}

@@ -9,7 +9,7 @@ export interface ReviewRequest {
   mocRevision: string;
   
   artifactHashes: Record<string, string>;
-  authoritySnapshot: Record<string, any>;
+  authoritySnapshot: Record<string, unknown>;
   
   requirementRefs: string[];
   evidenceRefs: string[];
@@ -42,5 +42,5 @@ export interface ReviewVerdict {
 }
 
 export interface ReviewerAdapter {
-  evaluate(request: ReviewRequest, candidateResult: any): Promise<ReviewVerdict>;
+  evaluate(request: ReviewRequest, candidateResult: unknown): Promise<ReviewVerdict>;
 }

@@ -61,7 +61,7 @@ describe('UC-01 Create New Product from Idea End-to-End', () => {
     await coordinator.resumeWithAuthority(workflowRunId, authEvent);
     await execPromise;
 
-    const eventsAfterAuth = (eventLedger as any).events;
+    const eventsAfterAuth = (eventLedger as unknown as { events: unknown[] }).events;
     const hasStartAuth = eventsAfterAuth.some(e => e.eventType === 'RUN_RESUMED' && e.payload?.authorityType === 'OWNER_IMPLEMENTATION_APPROVED');
     expect(hasStartAuth).toBe(true);
 

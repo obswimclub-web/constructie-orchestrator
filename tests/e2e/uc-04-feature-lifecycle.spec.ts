@@ -31,10 +31,10 @@ describe('UC-04 Feature Lifecycle', () => {
     };
 
     await runner.executeBlueprint('feature-bp', [wp]);
-    const events = (eventLedger as any).events;
-    const featComplete = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.artifacts?.some((a: any) => a.kind === 'FEATURE_COMPLETE'));
-    const judgeAccepted = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.findings?.some((f: any) => f.type === 'JUDGE_VERDICT' && f.content === 'ACCEPTED'));
-    const sourceUpdated = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.evidence?.some((ev: any) => ev.kind === 'SOURCE_TRUTH_UPDATED'));
+    const events = (eventLedger as unknown as { events: { eventType: string, payload?: { result?: { artifacts?: { kind: string }[] } } }[] }).events;
+    const featComplete = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.artifacts?.some((a: { kind: string }) => a.kind === 'FEATURE_COMPLETE'));
+    const judgeAccepted = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.findings?.some((f: unknown) => f.type === 'JUDGE_VERDICT' && f.content === 'ACCEPTED'));
+    const sourceUpdated = events.some(e => e.eventType === 'RUN_COMPLETED' && e.payload?.result?.evidence?.some((ev: unknown) => ev.kind === 'SOURCE_TRUTH_UPDATED'));
     expect(featComplete).toBe(true);
     expect(judgeAccepted).toBe(true);
     expect(sourceUpdated).toBe(true);

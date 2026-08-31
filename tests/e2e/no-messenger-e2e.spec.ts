@@ -1,7 +1,6 @@
 import { TrustedOwnerAuthorityIssuer } from '@co/policy';
 import { describe, it, expect, vi } from 'vitest';
 import { RunCoordinator, type EventLedger } from '../../packages/workflow/src/run-coordinator.js';
-import type { ReviewerBridge } from '@co/contracts';
 import type { AgentBridge, WorkPackage, AgentRunResult, AgentRunHandle } from '@co/contracts';
 import type { ProjectEvent } from '@co/domain';
 

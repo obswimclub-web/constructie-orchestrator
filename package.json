@@ -19,7 +19,7 @@
         "ci": "pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm arch:check",
         "db:migrate:sql": "node scripts/apply-sql-migrations.mjs",
         "test:restart:postgres": "vitest run tests/integration/restart-resume-postgres.spec.ts",
-        "qualification": "pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm arch:check"
+        "qualification": "pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm test:restart:postgres && pnpm arch:check"
     },
     "devDependencies": {
         "@co/agents": "workspace:*",

@@ -27,7 +27,7 @@ describe('Multi-Agent / Provider Execution Governance E2E', () => {
       dispatch: async () => { return { runId: 'run-exec-1', status: 'RUNNING' }; },
       getStatus: async () => { return 'COMPLETED'; },
       getResult: async (ref) => { return {
-        schemaVersion: '1.0.0', runRef: ref, status: 'COMPLETED', summary: 'Executor done', actionsTaken: [], artifacts: [], findings: [], evidence: [], sideEffects: [], unresolvedItems: [], requestedInputs: [], usage: { inputUnits: 0, outputUnits: 0, estimatedCost: 0, currency: 'USD' }
+        schemaVersion: '1.0.0', runRef: ref, status: 'COMPLETED', summary: 'Executor done', actionsTaken: [], artifacts: [], findings: [], evidence: [{ id: 'ev1', kind: 'stuff', content: 'stuff' }], sideEffects: [], unresolvedItems: [], requestedInputs: [], usage: { inputUnits: 0, outputUnits: 0, estimatedCost: 0, currency: 'USD' }
       }; },
       cancel: async () => { }
     };
@@ -36,7 +36,7 @@ describe('Multi-Agent / Provider Execution Governance E2E', () => {
       dispatch: async () => { return { runId: 'run-rev-1', status: 'RUNNING' }; },
       getStatus: async () => { return 'COMPLETED'; },
       getResult: async (ref) => { return {
-        schemaVersion: '1.0.0', runRef: ref, status: 'COMPLETED', summary: 'Reviewer done', actionsTaken: [], artifacts: [], findings: [], evidence: [], sideEffects: [], unresolvedItems: [], requestedInputs: [], usage: { inputUnits: 0, outputUnits: 0, estimatedCost: 0, currency: 'USD' }
+        schemaVersion: '1.0.0', runRef: ref, status: 'COMPLETED', summary: 'Reviewer done', actionsTaken: [], artifacts: [], findings: [], evidence: [{ id: 'ev2', kind: 'stuff', content: 'stuff' }], sideEffects: [], unresolvedItems: [], requestedInputs: [], usage: { inputUnits: 0, outputUnits: 0, estimatedCost: 0, currency: 'USD' }
       }; },
       cancel: async () => { }
     };
