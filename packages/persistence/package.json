@@ -9,7 +9,8 @@
     "build": "tsc -b",
     "typecheck": "tsc -b --pretty false",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
-    "prisma:validate": "prisma validate --schema prisma/schema.prisma"
+    "prisma:validate": "prisma validate --schema prisma/schema.prisma",
+    "postinstall": "pnpm prisma:generate"
   },
   "dependencies": {
     "@co/domain": "workspace:*",
@@ -18,5 +19,8 @@
   },
   "devDependencies": {
     "prisma": "^7.10.0"
+  },
+  "prisma": {
+    "schema": "prisma/schema.prisma"
   }
 }
