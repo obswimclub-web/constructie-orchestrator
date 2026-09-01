@@ -1,5 +1,14 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": { "rootDir": "src", "outDir": "dist" },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../contracts" },
+    { "path": "../domain" },
+    { "path": "../policy" },
+    { "path": "../tools" },
+    { "path": "../workflow" },
+    { "path": "../agents" },
+    { "path": "../persistence" }
+  ]
 }

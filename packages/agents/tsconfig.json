@@ -8,8 +8,8 @@
     "src/**/*.ts"
   ],
   "references": [
-    {
-      "path": "../contracts"
-    }
+    { "path": "../contracts" },
+    { "path": "../policy" },
+    { "path": "../tools" }
   ]
 }
