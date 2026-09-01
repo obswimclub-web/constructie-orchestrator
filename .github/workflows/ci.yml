@@ -3,6 +3,12 @@ on:
   pull_request:
   push:
     branches: [main]
+
+env:
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/orchestrator
+  REDIS_URL: redis://localhost:6379
+  NODE_ENV: test
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -30,4 +36,12 @@ jobs:
           node-version: 24
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      - name: Generate Prisma Client
+        run: pnpm --filter @co/persistence prisma:generate
+      - name: Apply canonical SQL migrations
+        run: pnpm db:migrate:sql
       - run: pnpm run ci
