@@ -1,9 +1,13 @@
 import { Card, CardContent } from '../ui/Card';
 import { Badge } from '../ui/Badge';
-import { mockIncidents } from '../../data/mock';
-import { AlertTriangle, ShieldCheck, Activity } from 'lucide-react';
+import { useFetch } from '../../data/hooks';
+import { fetchIncidents } from '../../data/api';
+import { AlertTriangle, Activity } from 'lucide-react';
+import { DataState } from '../ui/DataState';
 
 export function IncidentsPage() {
+  const { data: incidents, loading, error, isStale, isDegraded } = useFetch(fetchIncidents);
+
   return (
     <div className="max-w-[1600px] mx-auto pb-10 flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -13,17 +17,16 @@ export function IncidentsPage() {
         </div>
       </div>
 
-      <div className="flex flex-col gap-4">
-        {mockIncidents.length === 0 ? (
-          <Card>
-            <CardContent className="py-16 flex flex-col items-center justify-center text-slate-500">
-              <ShieldCheck className="w-12 h-12 text-green-500 mb-3 opacity-80" />
-              <p className="text-lg font-medium text-slate-900">System Healthy</p>
-              <p>No active incidents.</p>
-            </CardContent>
-          </Card>
-        ) : (
-          mockIncidents.map(inc => (
+      <DataState 
+        loading={loading} 
+        error={error} 
+        empty={!incidents || incidents.length === 0} 
+        emptyMessage="No active incidents."
+        isStale={isStale}
+        isDegraded={isDegraded}
+      >
+        <div className="flex flex-col gap-4">
+          {incidents?.map(inc => (
             <Card key={inc.id} className="border-red-200 shadow-sm">
               <CardContent className="p-6">
                 <div className="flex flex-col md:flex-row gap-6 justify-between items-start">
@@ -43,9 +46,9 @@ export function IncidentsPage() {
                 </div>
               </CardContent>
             </Card>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      </DataState>
     </div>
   );
 }

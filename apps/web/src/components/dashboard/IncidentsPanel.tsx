@@ -1,21 +1,26 @@
 import { Card, CardHeader, CardContent } from '../ui/Card';
 import { Badge } from '../ui/Badge';
-import { mockIncidents } from '../../data/mock';
-import { ShieldCheck } from 'lucide-react';
+import { useFetch } from '../../data/hooks';
+import { fetchIncidents } from '../../data/api';
+import { DataState } from '../ui/DataState';
 
 export function IncidentsPanel() {
+  const { data: incidents, loading, error, isStale, isDegraded } = useFetch(fetchIncidents);
+
   return (
-    <Card className="h-full">
+    <Card className="h-full flex flex-col">
       <CardHeader title="Incidents" />
-      <CardContent className={mockIncidents.length === 0 ? "flex items-center justify-center h-48" : ""}>
-        {mockIncidents.length === 0 ? (
-          <div className="flex flex-col items-center text-slate-400">
-            <ShieldCheck className="w-12 h-12 mb-3 text-green-500 opacity-80" />
-            <p className="text-sm font-medium text-slate-600">No critical incidents</p>
-          </div>
-        ) : (
+      <CardContent className="flex-1 overflow-y-auto relative">
+        <DataState 
+          loading={loading} 
+          error={error} 
+          empty={!incidents || incidents.length === 0}
+          emptyMessage="No critical incidents"
+          isStale={isStale}
+          isDegraded={isDegraded}
+        >
           <div className="flex flex-col gap-3">
-            {mockIncidents.map(inc => (
+            {incidents?.map(inc => (
               <div key={inc.id} className="p-3 bg-red-50 border border-red-100 rounded-md">
                 <div className="flex justify-between items-start">
                   <Badge variant="danger">{inc.severity}</Badge>
@@ -29,7 +34,7 @@ export function IncidentsPanel() {
               </div>
             ))}
           </div>
-        )}
+        </DataState>
       </CardContent>
     </Card>
   );
