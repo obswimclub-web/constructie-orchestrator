@@ -19,7 +19,8 @@
         "ci": "pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm arch:check",
         "db:migrate:sql": "node scripts/apply-sql-migrations.mjs",
         "test:restart:postgres": "vitest run tests/integration/restart-resume-postgres.spec.ts",
-        "qualification": "pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm test:restart:postgres && pnpm arch:check"
+        "qualification": "pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm test:restart:postgres && pnpm arch:check",
+        "postinstall": "pnpm --filter @co/persistence prisma:generate"
     },
     "devDependencies": {
         "@co/agents": "workspace:*",
@@ -37,10 +38,12 @@
         "@prisma/client": "^7.10.0",
         "@types/node": "^24.0.0",
         "@types/pg": "^8.23.1",
+        "@types/supertest": "^7.2.1",
         "eslint": "^9.0.0",
         "pg": "^8.23.0",
         "prettier": "^3.0.0",
         "prisma": "^7.0.0",
+        "supertest": "^7.2.2",
         "typescript": "^5.9.0",
         "typescript-eslint": "^8.0.0",
         "vitest": "^3.0.0",
