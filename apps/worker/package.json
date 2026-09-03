@@ -3,5 +3,24 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "scripts": { "build": "tsc -b", "typecheck": "tsc -b --pretty false" }
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false",
+    "start": "node dist/index.js"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.4",
+    "vitest": "^3.2.7"
+  },
+  "dependencies": {
+    "@co/agents": "workspace:*",
+    "@co/contracts": "workspace:*",
+    "@co/domain": "workspace:*",
+    "@co/persistence": "workspace:*",
+    "@co/policy": "workspace:*",
+    "@co/workflow": "workspace:*",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "pg": "^8.23.0"
+  }
 }
