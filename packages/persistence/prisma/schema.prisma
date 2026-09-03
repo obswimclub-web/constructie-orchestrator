@@ -176,3 +176,42 @@ model CompletionDecision {
   @@index([projectId, state])
   @@map("completion_decisions")
 }
+
+model Approval {
+  id                     String    @id @db.Uuid
+  projectId              String    @map("project_id") @db.Uuid
+  workItemId             String?   @map("work_item_id") @db.Uuid
+  attemptId              String?   @map("attempt_id") @db.Uuid
+  gateKind               String    @map("gate_kind")
+  status                 String    @default("PENDING")
+  scope                  Json
+  evidenceRefs           Json      @map("evidence_refs")
+  requestedBy            String    @default("SYSTEM") @map("requested_by")
+  requestedAt            DateTime  @default(now()) @map("requested_at")
+  expiresAt              DateTime? @map("expires_at")
+  decidedBy              String?   @map("decided_by")
+  decidedAt              DateTime? @map("decided_at")
+  rationale              String?
+  consumedAt             DateTime? @map("consumed_at")
+  postActionVerification Json?     @map("post_action_verification")
+
+  auditEvents ApprovalAuditEvent[]
+
+  @@index([projectId, status])
+  @@index([workItemId])
+  @@map("approvals")
+}
+
+model ApprovalAuditEvent {
+  id         String   @id @db.Uuid
+  approvalId String   @map("approval_id") @db.Uuid
+  eventType  String   @map("event_type")
+  actorId    String   @map("actor_id")
+  payload    Json
+  occurredAt DateTime @default(now()) @map("occurred_at")
+
+  approval Approval @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+
+  @@index([approvalId])
+  @@map("approval_audit_events")
+}

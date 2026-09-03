@@ -29,15 +29,38 @@ export interface Agent {
   latencyMs: number;
 }
 
+export interface ApprovalEvidenceRef {
+  id: string;
+  claim: string;
+  sourceRef: string;
+}
+
+export interface ApprovalPostActionVerification {
+  result: 'PASS' | 'FAIL' | 'PENDING';
+  verifiedAt: string;
+  sha?: string;
+  remoteRef?: string;
+  details?: string;
+}
+
+export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'USED' | 'EXPIRED';
+
 export interface Approval {
   id: string;
-  title: string;
-  workPackage: string;
-  qualificationStatus: string;
-  reviewerStatus: string;
-  securityStatus: string;
-  candidateFiles: number;
+  projectId: string;
+  workItemId: string | null;
+  gateKind: string;
+  status: ApprovalStatus;
+  scope: Record<string, unknown>;
+  evidenceRefs: ApprovalEvidenceRef[];
+  requestedBy: string;
   requestedAt: string;
+  expiresAt: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  rationale: string | null;
+  consumedAt: string | null;
+  postActionVerification: ApprovalPostActionVerification | null;
 }
 
 export interface EvidenceEvent {

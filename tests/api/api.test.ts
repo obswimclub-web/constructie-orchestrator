@@ -13,10 +13,11 @@ const prisma = new PrismaClient({ adapter });
 describe('API-001 Read-Only Telemetry Endpoints', () => {
   beforeAll(async () => {
     // Clean up
+    await prisma.approvalAuditEvent.deleteMany();
+    await prisma.approval.deleteMany();
     await prisma.workItem.deleteMany();
     await prisma.project.deleteMany();
 
-    // Create a mock project
     const proj = await prisma.project.create({
       data: {
         id: randomUUID(),
@@ -27,7 +28,6 @@ describe('API-001 Read-Only Telemetry Endpoints', () => {
       }
     });
 
-    // Create mock work items
     await prisma.workItem.create({
       data: {
         id: randomUUID(),
@@ -39,7 +39,7 @@ describe('API-001 Read-Only Telemetry Endpoints', () => {
       }
     });
 
-    await prisma.workItem.create({
+    const wi2 = await prisma.workItem.create({
       data: {
         id: randomUUID(),
         projectId: proj.id,
@@ -47,6 +47,19 @@ describe('API-001 Read-Only Telemetry Endpoints', () => {
         objective: 'Test Objective 2 (Approval Needed)',
         lifecycleState: 'REVIEW_REQUIRED',
         revision: 1
+      }
+    });
+
+    await prisma.approval.create({
+      data: {
+        id: randomUUID(),
+        projectId: proj.id,
+        workItemId: wi2.id,
+        gateKind: 'COMMIT',
+        scope: { kind: 'COMMIT', paths: ['apps/api/src/index.ts'], message: 'feat: test' },
+        evidenceRefs: [{ id: randomUUID(), claim: 'Tests pass', sourceRef: 'ci/123' }],
+        requestedBy: 'SYSTEM',
+        status: 'PENDING',
       }
     });
   });
@@ -70,12 +83,20 @@ describe('API-001 Read-Only Telemetry Endpoints', () => {
     expect(res.body.length).toBe(2);
   });
 
-  it('GET /api/approvals should return only items in REVIEW_REQUIRED', async () => {
+  it('GET /api/approvals returns real Approval records with canonical fields', async () => {
     const res = await request(app).get('/api/approvals');
     expect(res.status).toBe(200);
     expect(res.body).toBeInstanceOf(Array);
     expect(res.body.length).toBe(1);
-    expect(res.body[0].objective).toContain('Approval Needed');
+    const approval = res.body[0];
+    expect(approval.gateKind).toBe('COMMIT');
+    expect(approval.status).toBe('PENDING');
+    expect(approval.scope).toHaveProperty('kind', 'COMMIT');
+    expect(approval.evidenceRefs).toHaveLength(1);
+    expect(approval.requestedBy).toBe('SYSTEM');
+    // No fabricated fields
+    expect(approval).not.toHaveProperty('qualificationStatus');
+    expect(approval).not.toHaveProperty('reviewerStatus');
   });
 
   it('GET /api/attempts should return attempts', async () => {

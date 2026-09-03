@@ -1,4 +1,4 @@
-import { ProjectDto, WorkItemDto, AttemptDto, EvidenceRecordDto } from '@co/contracts';
+import { ProjectDto, WorkItemDto, AttemptDto, EvidenceRecordDto, ApprovalDto, ApprovalDecisionDto, CreateApprovalDto, ApprovalConsumeDto } from '@co/contracts';
 import { Project, WorkItem, Approval, EvidenceEvent, RunStatus } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001';
@@ -7,7 +7,7 @@ export async function fetchProjects(): Promise<Project[]> {
   const res = await fetch(`${API_BASE}/api/projects`);
   if (!res.ok) throw new Error('Failed to fetch projects');
   const dtos: ProjectDto[] = await res.json();
-  
+
   return dtos.map(dto => ({
     id: dto.id,
     name: dto.name,
@@ -24,7 +24,7 @@ export async function fetchProjects(): Promise<Project[]> {
 }
 
 function mapLifecycleStateToRunStatus(state: string): RunStatus {
-  switch(state) {
+  switch (state) {
     case 'RUNNING': return 'RUNNING';
     case 'REVIEW_REQUIRED': return 'REVIEW';
     case 'REPAIR_REQUIRED': return 'REPAIR';
@@ -38,7 +38,7 @@ export async function fetchWorkItems(): Promise<WorkItem[]> {
   const res = await fetch(`${API_BASE}/api/work-items`);
   if (!res.ok) throw new Error('Failed to fetch work items');
   const dtos: WorkItemDto[] = await res.json();
-  
+
   return dtos.map(dto => ({
     id: dto.id,
     title: dto.objective,
@@ -57,7 +57,7 @@ export async function fetchEvidence(): Promise<EvidenceEvent[]> {
   const res = await fetch(`${API_BASE}/api/evidence`);
   if (!res.ok) throw new Error('Failed to fetch evidence');
   const dtos: EvidenceRecordDto[] = await res.json();
-  
+
   return dtos.map(dto => ({
     id: dto.id,
     timestamp: dto.observedAt,
@@ -68,30 +68,91 @@ export async function fetchEvidence(): Promise<EvidenceEvent[]> {
   }));
 }
 
-export async function fetchApprovals(): Promise<Approval[]> {
-  const res = await fetch(`${API_BASE}/api/approvals`);
-  if (!res.ok) throw new Error('Failed to fetch approvals');
-  const dtos: WorkItemDto[] = await res.json();
-  
-  return dtos.map(dto => ({
+function mapApprovalDtoToFrontend(dto: ApprovalDto): Approval {
+  return {
     id: dto.id,
-    title: 'AUTHORIZATION REQUIRED',
-    workPackage: dto.objective,
-    qualificationStatus: 'PASS',
-    reviewerStatus: 'PASS',
-    securityStatus: 'PASS',
-    candidateFiles: 0,
-    requestedAt: dto.createdAt
-  }));
+    projectId: dto.projectId,
+    workItemId: dto.workItemId,
+    gateKind: dto.gateKind,
+    status: dto.status,
+    scope: dto.scope as Record<string, unknown>,
+    evidenceRefs: dto.evidenceRefs,
+    requestedBy: dto.requestedBy,
+    requestedAt: dto.requestedAt,
+    expiresAt: dto.expiresAt,
+    decidedBy: dto.decidedBy,
+    decidedAt: dto.decidedAt,
+    rationale: dto.rationale,
+    consumedAt: dto.consumedAt,
+    postActionVerification: dto.postActionVerification,
+  };
 }
 
+export async function fetchApprovals(status = 'PENDING'): Promise<Approval[]> {
+  const res = await fetch(`${API_BASE}/api/approvals?status=${status}`);
+  if (!res.ok) throw new Error('Failed to fetch approvals');
+  const dtos: ApprovalDto[] = await res.json();
+  return dtos.map(mapApprovalDtoToFrontend);
+}
+
+export async function fetchApproval(id: string): Promise<Approval> {
+  const res = await fetch(`${API_BASE}/api/approvals/${id}`);
+  if (!res.ok) throw new Error('Failed to fetch approval');
+  const dto: ApprovalDto = await res.json();
+  return mapApprovalDtoToFrontend(dto);
+}
+
+export async function createApproval(payload: CreateApprovalDto): Promise<Approval> {
+  const res = await fetch(`${API_BASE}/api/approvals`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('Failed to create approval');
+  const dto: ApprovalDto = await res.json();
+  return mapApprovalDtoToFrontend(dto);
+}
+
+export async function decideApproval(
+  id: string,
+  decision: 'APPROVED' | 'REJECTED',
+  rationale?: string,
+  decidedBy?: string
+): Promise<Approval> {
+  const body: ApprovalDecisionDto = { decision, rationale, decidedBy };
+  const res = await fetch(`${API_BASE}/api/approvals/${id}/decide`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || 'Failed to decide on approval');
+  }
+  const dto: ApprovalDto = await res.json();
+  return mapApprovalDtoToFrontend(dto);
+}
+
+export async function consumeApproval(id: string, payload: ApprovalConsumeDto): Promise<Approval> {
+  const res = await fetch(`${API_BASE}/api/approvals/${id}/consume`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || 'Failed to consume approval');
+  }
+  const dto: ApprovalDto = await res.json();
+  return mapApprovalDtoToFrontend(dto);
+}
 
 export async function fetchDashboardStats() {
   const [runs, approvals] = await Promise.all([
     fetchWorkItems().catch(() => []),
     fetchApprovals().catch(() => []),
   ]);
-  
+
   return {
     activeRuns: runs.filter(r => r.status === 'RUNNING').length,
     agentsOnline: 0,

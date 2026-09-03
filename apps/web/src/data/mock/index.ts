@@ -35,13 +35,23 @@ export const mockAgents: Agent[] = [
 export const mockApprovals: Approval[] = [
   {
     id: 'app-1',
-    title: 'COMMIT AUTHORIZATION REQUIRED',
-    workPackage: 'UI-001 — Owner Dashboard',
-    qualificationStatus: 'PASS',
-    reviewerStatus: 'PASS',
-    securityStatus: 'PASS',
-    candidateFiles: 12,
-    requestedAt: '5m ago'
+    projectId: 'proj-1',
+    workItemId: 'wi-1',
+    gateKind: 'COMMIT',
+    status: 'PENDING',
+    scope: { kind: 'COMMIT', paths: ['apps/api/src/index.ts'], message: 'feat: UI-001 Owner Dashboard' },
+    evidenceRefs: [
+      { id: 'ev-1', claim: 'Tests 206/206 PASS', sourceRef: 'ci/run/999' },
+      { id: 'ev-2', claim: 'Independent reviewer PASS', sourceRef: 'rev/subagent-abc' },
+    ],
+    requestedBy: 'ANTIGRAVITY',
+    requestedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    expiresAt: null,
+    decidedBy: null,
+    decidedAt: null,
+    rationale: null,
+    consumedAt: null,
+    postActionVerification: null,
   }
 ];
 
