@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { Redactor, defaultRedactor, sanitizeValue } from './redactor.js';
 
 export interface ExecutionLogRecord {
   readonly id: string;
@@ -18,19 +19,6 @@ export interface ExecutionLogRecord {
 export interface LoggerService {
   log(projectId: string, runId: string, message: string, context?: Omit<Partial<ExecutionLogRecord>, 'id' | 'timestamp' | 'sequence' | 'message' | 'projectId' | 'runId' | 'hash' | 'previousHash'>): void;
   getLogs(projectId: string, filter?: { runId?: string, attemptId?: string, workItemId?: string }): readonly ExecutionLogRecord[];
-}
-
-function deepRedact(obj: unknown, redactor: { redact: (s: string) => string }): unknown {
-  if (typeof obj === 'string') return redactor.redact(obj);
-  if (Array.isArray(obj)) return obj.map(item => deepRedact(item, redactor));
-  if (obj !== null && typeof obj === 'object') {
-    const res: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(obj)) {
-      res[k] = deepRedact(v, redactor);
-    }
-    return res;
-  }
-  return obj;
 }
 
 export class IntegrityVerifier {
@@ -73,19 +61,23 @@ export class InMemoryLogger implements LoggerService {
   private seq = 0;
   private lastHashes = new Map<string, string>();
 
-  constructor(private readonly redactor?: { redact: (s: string) => string }) {}
+  constructor(
+    private readonly redactor: Redactor = defaultRedactor,
+    private readonly clock: () => Date = () => new Date(),
+    private readonly idFactory?: () => string
+  ) {}
 
   public log(projectId: string, runId: string, message: string, context?: Omit<Partial<ExecutionLogRecord>, 'id' | 'timestamp' | 'sequence' | 'message' | 'projectId' | 'runId' | 'hash' | 'previousHash'>): void {
-    const rawMessage = this.redactor ? this.redactor.redact(message) : message;
+    const rawMessage = this.redactor.redact(message);
     
     let cleanMetadata: Record<string, unknown> | undefined;
     if (context?.metadata) {
-      cleanMetadata = this.redactor ? (deepRedact(context.metadata, this.redactor) as Record<string, unknown>) : context.metadata;
+      cleanMetadata = sanitizeValue(context.metadata, this.redactor) as Record<string, unknown>;
     }
 
-    const timestamp = new Date();
-    const id = `log-${Date.now()}-${this.seq}`;
+    const timestamp = this.clock();
     const sequence = ++this.seq;
+    const id = this.idFactory ? this.idFactory() : `log-${timestamp.getTime()}-${sequence}`;
     
     const key = `${projectId}:${runId}`;
     const previousHash = this.lastHashes.get(key) ?? null;

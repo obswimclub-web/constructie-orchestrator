@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { IncidentEventRecord } from "../../packages/observability/src/incidents.js";
 import { describe, expect, it } from 'vitest';
-import { InMemoryLogger, InMemoryIncidentService, AttemptReconstructor, TraceabilityEngine, IntegrityVerifier, IncidentIntegrityVerifier } from '../../packages/observability/src/index.js';
+import { InMemoryLogger, InMemoryIncidentService, AttemptReconstructor, TraceabilityEngine, IntegrityVerifier, IncidentIntegrityVerifier, packageName, defaultSanitize, sanitizeValue } from '../../packages/observability/src/index.js';
 import { assertVerificationCanCompleteWorkItem, type EvidenceRecord, type VerificationRecord } from '../../packages/evidence/src/records.js';
 
 describe('Observability Logger', () => {
@@ -330,7 +330,7 @@ describe('R6 Incident Service Project Isolation Tests', () => {
   it('R6-1 and R6-2: IncidentService isolates identically named incidents across projects', () => {
     const nextId = 'collision-123';
     const idFactory = () => nextId;
-    const service = new InMemoryIncidentService(undefined, idFactory);
+    const service = new InMemoryIncidentService(undefined, undefined, undefined, idFactory);
 
     // Project A opens an incident
     const evtA1 = service.openIncident('proj-A', 'run-1', 'Error A', 'HIGH');
@@ -371,5 +371,257 @@ describe('R6 Incident Service Project Isolation Tests', () => {
     
     expect(IncidentIntegrityVerifier.verifyIncident(eventsA)).toBe(true);
     expect(IncidentIntegrityVerifier.verifyIncident(eventsB)).toBe(true);
+  });
+});
+
+describe('R7-1 Fail-Closed Secret Safety', () => {
+  it('R7-1: default redactor safely redacts credential-like material in messages and metadata', () => {
+    const logger = new InMemoryLogger();
+    logger.log('proj-1', 'run-1', 'Connecting with ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', {
+      metadata: {
+        nested: { inner: 'Bearer secret_token123' },
+        arr: ['token XYZ']
+      }
+    });
+
+    const logs = logger.getLogs('proj-1');
+    expect(logs[0].message).toContain('[REDACTED]');
+    expect(logs[0].message).not.toContain('ghp_');
+    
+    expect((logs[0].metadata?.nested as Record<string, unknown>).inner).toBe('Bearer [REDACTED]');
+    expect((logs[0].metadata?.arr as Record<string, unknown>[])[0]).toBe('token [REDACTED]');
+  });
+
+  it('R7-1: default redactor safely redacts incident descriptions and claims', () => {
+    const service = new InMemoryIncidentService();
+    const evt = service.openIncident('proj-1', 'run-1', 'Leaked ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', 'HIGH');
+    expect(evt.description).toContain('[REDACTED]');
+    expect(evt.description).not.toContain('ghp_');
+
+    const evt2 = service.resolveIncident('proj-1', evt.incidentId, 'Rotated Authorization: Bearer abcdef123');
+    expect(evt2.resolutionClaim).toContain('[REDACTED]');
+    expect(evt2.resolutionClaim).not.toContain('abcdef');
+  });
+
+  it('R7-1: normal non-sensitive text remains usable', () => {
+    const logger = new InMemoryLogger();
+    logger.log('proj-1', 'run-1', 'This is a normal message without secrets');
+    const logs = logger.getLogs('proj-1');
+    expect(logs[0].message).toBe('This is a normal message without secrets');
+  });
+});
+
+describe('R7-2 Deterministic Clock / ID / Sequence', () => {
+  it('R7-2: prove equal-timestamp ordering is deterministic and hash reproduction works', () => {
+    // Inject deterministic clock and ID
+    const fixedDate = new Date('2026-01-01T00:00:00.000Z');
+    const clock = () => fixedDate;
+    let logIdSeq = 0;
+    const idFactory = () => `test-log-${++logIdSeq}`;
+    
+    const logger = new InMemoryLogger(undefined, clock, idFactory);
+    logger.log('proj-1', 'run-1', 'msg1');
+    logger.log('proj-1', 'run-1', 'msg2');
+
+    const logs = logger.getLogs('proj-1');
+    expect(logs).toHaveLength(2);
+    expect(logs[0].timestamp.toISOString()).toBe('2026-01-01T00:00:00.000Z');
+    expect(logs[1].timestamp.toISOString()).toBe('2026-01-01T00:00:00.000Z');
+    expect(logs[0].id).toBe('test-log-1');
+    expect(logs[1].id).toBe('test-log-2');
+    
+    // Hash reproduction using identical injected inputs
+    // We expect IntegrityVerifier to pass exactly these logs
+    expect(IntegrityVerifier.verifyLogs(logs)).toBe(true);
+  });
+});
+
+describe('R8-1 Extended Secret Sanitizer', () => {
+  it('R8-1a: redacts password-like credentials in messages', () => {
+    const logger = new InMemoryLogger();
+    logger.log('proj-1', 'run-1', 'Connecting with password=SuperSecret123');
+    const logs = logger.getLogs('proj-1');
+    expect(logs[0].message).toContain('[REDACTED]');
+    expect(logs[0].message).not.toContain('SuperSecret123');
+  });
+
+  it('R8-1b: redacts API key credentials in messages', () => {
+    const logger = new InMemoryLogger();
+    logger.log('proj-1', 'run-1', 'Using api_key=sk-abc123xyz');
+    const logs = logger.getLogs('proj-1');
+    expect(logs[0].message).toContain('[REDACTED]');
+    expect(logs[0].message).not.toContain('sk-abc123xyz');
+  });
+
+  it('R8-1c: redacts client_secret in messages', () => {
+    const logger = new InMemoryLogger();
+    logger.log('proj-1', 'run-1', 'client_secret=very_secret_value_here');
+    const logs = logger.getLogs('proj-1');
+    expect(logs[0].message).toContain('[REDACTED]');
+    expect(logs[0].message).not.toContain('very_secret_value_here');
+  });
+
+  it('R8-1d: redacts sensitive keys in nested metadata objects', () => {
+    const logger = new InMemoryLogger();
+    logger.log('proj-1', 'run-1', 'normal log', {
+      metadata: {
+        password: 'my-secret-pw',
+        config: { apiKey: 'key-456', host: 'example.com' },
+        items: [{ clientSecret: 'cs-789' }]
+      }
+    });
+    const logs = logger.getLogs('proj-1');
+    const meta = logs[0].metadata as Record<string, unknown>;
+    expect(meta.password).toBe('[REDACTED]');
+    expect((meta.config as Record<string, unknown>).apiKey).toBe('[REDACTED]');
+    expect((meta.config as Record<string, unknown>).host).toBe('example.com');
+    expect(((meta.items as Record<string, unknown>[])[0]).clientSecret).toBe('[REDACTED]');
+  });
+
+  it('R8-1e: redacts sensitive keys in nested metadata arrays', () => {
+    const logger = new InMemoryLogger();
+    logger.log('proj-1', 'run-1', 'array test', {
+      metadata: {
+        connections: [{ privateKey: 'pk-secret', host: 'db1' }, { accessToken: 'at-secret', host: 'db2' }]
+      }
+    });
+    const logs = logger.getLogs('proj-1');
+    const meta = logs[0].metadata as Record<string, unknown>;
+    const conns = meta.connections as Record<string, unknown>[];
+    expect(conns[0].privateKey).toBe('[REDACTED]');
+    expect(conns[0].host).toBe('db1');
+    expect(conns[1].accessToken).toBe('[REDACTED]');
+    expect(conns[1].host).toBe('db2');
+  });
+
+  it('R8-1f: redacts sensitive text in incident descriptions', () => {
+    const service = new InMemoryIncidentService();
+    const evt = service.openIncident('proj-1', 'run-1', 'Found password=admin123 in config', 'HIGH');
+    expect(evt.description).toContain('[REDACTED]');
+    expect(evt.description).not.toContain('admin123');
+  });
+
+  it('R8-1g: redacts sensitive text in mitigation claims', () => {
+    const service = new InMemoryIncidentService();
+    const evt = service.openIncident('proj-1', 'run-1', 'System error', 'MEDIUM');
+    const mitigated = service.mitigateIncident('proj-1', evt.incidentId, 'Rotated api_key=old_key_value');
+    expect(mitigated.resolutionClaim).toContain('[REDACTED]');
+    expect(mitigated.resolutionClaim).not.toContain('old_key_value');
+  });
+
+  it('R8-1h: redacts sensitive text in resolution claims', () => {
+    const service = new InMemoryIncidentService();
+    const evt = service.openIncident('proj-1', 'run-1', 'Leak detected', 'HIGH');
+    const resolved = service.resolveIncident('proj-1', evt.incidentId, 'Replaced client_secret=leaked_value');
+    expect(resolved.resolutionClaim).toContain('[REDACTED]');
+    expect(resolved.resolutionClaim).not.toContain('leaked_value');
+  });
+
+  it('R8-1i: preserves normal non-sensitive operational text', () => {
+    const result = defaultSanitize('Deployment to staging completed successfully in 42s');
+    expect(result).toBe('Deployment to staging completed successfully in 42s');
+
+    const metaResult = sanitizeValue({ host: 'prod.example.com', port: 443, status: 'healthy' });
+    expect(metaResult).toEqual({ host: 'prod.example.com', port: 443, status: 'healthy' });
+  });
+});
+
+describe('R8-2 Deterministic IncidentService Proof', () => {
+  it('R8-2: deterministic clock/idFactory/incidentIdFactory produces reproducible hash chains', () => {
+    const fixedTime = new Date('2026-06-15T12:00:00.000Z');
+    const clock = () => fixedTime;
+    let evtSeq = 0;
+    const idFactory = () => `det-evt-${++evtSeq}`;
+    const incidentIdFactory = () => 'det-inc-1';
+
+    // First instance
+    const svc1 = new InMemoryIncidentService(undefined, clock, idFactory, incidentIdFactory);
+    const evt1_1 = svc1.openIncident('proj-A', 'run-1', 'Test error', 'HIGH');
+    const evt1_2 = svc1.mitigateIncident('proj-A', 'det-inc-1', 'Applied fix');
+    const evt1_3 = svc1.resolveIncident('proj-A', 'det-inc-1', 'Verified fix');
+
+    // Verify stable IDs
+    expect(evt1_1.id).toBe('det-evt-1');
+    expect(evt1_1.incidentId).toBe('det-inc-1');
+    expect(evt1_2.id).toBe('det-evt-2');
+    expect(evt1_3.id).toBe('det-evt-3');
+
+    // Verify same-timestamp deterministic sequencing
+    expect(evt1_1.timestamp.toISOString()).toBe('2026-06-15T12:00:00.000Z');
+    expect(evt1_2.timestamp.toISOString()).toBe('2026-06-15T12:00:00.000Z');
+    expect(evt1_3.timestamp.toISOString()).toBe('2026-06-15T12:00:00.000Z');
+    expect(evt1_1.sequence).toBe(1);
+    expect(evt1_2.sequence).toBe(2);
+    expect(evt1_3.sequence).toBe(3);
+
+    // Verify predecessor hash chain
+    expect(evt1_1.previousHash).toBeNull();
+    expect(evt1_2.previousHash).toBe(evt1_1.hash);
+    expect(evt1_3.previousHash).toBe(evt1_2.hash);
+
+    // Verify integrity
+    const events1 = svc1.listIncidentEvents('proj-A');
+    expect(IncidentIntegrityVerifier.verifyIncident(events1)).toBe(true);
+
+    // Second independent instance with identical inputs — must reproduce identical hashes
+    evtSeq = 0;
+    const svc2 = new InMemoryIncidentService(undefined, clock, idFactory, incidentIdFactory);
+    const evt2_1 = svc2.openIncident('proj-A', 'run-1', 'Test error', 'HIGH');
+    const evt2_2 = svc2.mitigateIncident('proj-A', 'det-inc-1', 'Applied fix');
+    const evt2_3 = svc2.resolveIncident('proj-A', 'det-inc-1', 'Verified fix');
+
+    // Prove hash reproduction — zero sleep, zero wall-clock dependence
+    expect(evt1_1.hash).toBe(evt2_1.hash);
+    expect(evt1_2.hash).toBe(evt2_2.hash);
+    expect(evt1_3.hash).toBe(evt2_3.hash);
+
+    const events2 = svc2.listIncidentEvents('proj-A');
+    expect(IncidentIntegrityVerifier.verifyIncident(events2)).toBe(true);
+  });
+
+  it('R8-2b: deterministic Logger proof with hash reproduction', () => {
+    const fixedDate = new Date('2026-01-01T00:00:00.000Z');
+    const clock = () => fixedDate;
+    let seq1 = 0;
+    const idFactory1 = () => `det-log-${++seq1}`;
+
+    const logger1 = new InMemoryLogger(undefined, clock, idFactory1);
+    logger1.log('proj-1', 'run-1', 'msg-alpha');
+    logger1.log('proj-1', 'run-1', 'msg-beta');
+    const logs1 = logger1.getLogs('proj-1');
+
+    // Second independent instance
+    let seq2 = 0;
+    const idFactory2 = () => `det-log-${++seq2}`;
+    const logger2 = new InMemoryLogger(undefined, clock, idFactory2);
+    logger2.log('proj-1', 'run-1', 'msg-alpha');
+    logger2.log('proj-1', 'run-1', 'msg-beta');
+    const logs2 = logger2.getLogs('proj-1');
+
+    // Hash reproduction
+    expect(logs1[0].hash).toBe(logs2[0].hash);
+    expect(logs1[1].hash).toBe(logs2[1].hash);
+
+    expect(IntegrityVerifier.verifyLogs(logs1)).toBe(true);
+    expect(IntegrityVerifier.verifyLogs(logs2)).toBe(true);
+  });
+});
+
+describe('R8-3 Public API Compatibility & packageName Regression', () => {
+  it('R8-3: packageName exports correctly from @co/observability', () => {
+    expect(packageName).toBe('@co/observability');
+  });
+
+  it('R8-3b: all public exports are defined and available', () => {
+    expect(InMemoryLogger).toBeDefined();
+    expect(IntegrityVerifier).toBeDefined();
+    expect(InMemoryIncidentService).toBeDefined();
+    expect(IncidentIntegrityVerifier).toBeDefined();
+    expect(AttemptReconstructor).toBeDefined();
+    expect(TraceabilityEngine).toBeDefined();
+    expect(defaultSanitize).toBeDefined();
+    expect(sanitizeValue).toBeDefined();
+    expect(typeof defaultSanitize).toBe('function');
+    expect(typeof sanitizeValue).toBe('function');
   });
 });
