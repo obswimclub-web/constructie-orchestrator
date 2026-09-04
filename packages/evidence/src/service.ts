@@ -1,3 +1,4 @@
+
 import { randomUUID } from 'node:crypto';
 import type { WorkItem } from '@co/domain';
 import {
@@ -41,10 +42,13 @@ export class EvidenceVerificationService {
 
   public async recordVerificationAndResolve(input: {
     workItem: WorkItem;
+    runId: string;
+    attemptId?: string;
     verificationType: VerificationRecord['verificationType'];
     status: VerificationStatus;
     evidenceIds: readonly string[];
     verifierRef: string;
+    completionDecisionId?: string;
     now?: Date;
   }): Promise<{ verification: VerificationRecord; workItem: WorkItem }> {
     if (input.workItem.lifecycleState !== 'VERIFICATION_REQUIRED') {
@@ -54,11 +58,14 @@ export class EvidenceVerificationService {
     const verification = await this.evidenceStore.saveVerification({
       id: randomUUID(),
       projectId: input.workItem.projectId,
+      runId: input.runId,
       workItemId: input.workItem.id,
+      attemptId: input.attemptId ?? null,
       verificationType: input.verificationType,
       status: input.status,
       evidenceIds: input.evidenceIds,
       verifierRef: input.verifierRef,
+      completionDecisionId: input.completionDecisionId ?? null,
       verifiedAt: now,
       createdAt: now,
     });
