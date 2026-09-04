@@ -3,11 +3,11 @@ import { assertVerificationCanCompleteWorkItem, type EvidenceRecord, type Verifi
 
 const now = new Date('2026-08-20T12:00:00.000Z');
 const evidence: EvidenceRecord = {
-  id: 'e1', projectId: 'p1', workItemId: 'w1', artifactId: 'a1', claim: 'tests passed',
+  id: 'e1', runId: 'r1', projectId: 'p1', workItemId: 'w1', artifactId: 'a1', claim: 'tests passed',
   sourceType: 'TOOL_RESULT', sourceRef: 'tool-1', currentness: 'CURRENT', observedAt: now, createdAt: now,
 };
 const verification: VerificationRecord = {
-  id: 'v1', projectId: 'p1', workItemId: 'w1', verificationType: 'TEST', status: 'PASS',
+  id: 'v1', runId: 'r1', projectId: 'p1', workItemId: 'w1', verificationType: 'TEST', status: 'PASS',
   evidenceIds: ['e1'], verifierRef: 'verifier:test', verifiedAt: now, createdAt: now,
 };
 

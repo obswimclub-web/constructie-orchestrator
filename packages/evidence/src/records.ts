@@ -1,3 +1,4 @@
+
 export const ARTIFACT_KINDS = [
   'PATCH',
   'FILE',
@@ -25,6 +26,7 @@ export type VerificationStatus = (typeof VERIFICATION_STATUSES)[number];
 export interface ArtifactRecord {
   readonly id: string;
   readonly projectId: string;
+  readonly runId: string;
   readonly workItemId: string;
   readonly attemptId: string | null;
   readonly kind: ArtifactKind;
@@ -37,11 +39,17 @@ export interface ArtifactRecord {
 export interface EvidenceRecord {
   readonly id: string;
   readonly projectId: string;
+  readonly runId: string;
   readonly workItemId: string;
+  readonly attemptId: string | null;
+  readonly approvalId: string | null;
+  readonly agentId: string | null;
   readonly artifactId: string | null;
   readonly claim: string;
   readonly sourceType: 'AGENT_RESULT' | 'TOOL_RESULT' | 'VERIFICATION';
   readonly sourceRef: string;
+  readonly scmCommitSha: string | null;
+  readonly deploymentUri: string | null;
   readonly currentness: EvidenceCurrentness;
   readonly observedAt: Date;
   readonly createdAt: Date;
@@ -50,11 +58,14 @@ export interface EvidenceRecord {
 export interface VerificationRecord {
   readonly id: string;
   readonly projectId: string;
+  readonly runId: string;
   readonly workItemId: string;
+  readonly attemptId: string | null;
   readonly verificationType: 'TEST' | 'STATIC_CHECK' | 'BEHAVIORAL_CHECK' | 'MANUAL_RULE';
   readonly status: VerificationStatus;
   readonly evidenceIds: readonly string[];
   readonly verifierRef: string;
+  readonly completionDecisionId: string | null;
   readonly verifiedAt: Date;
   readonly createdAt: Date;
 }

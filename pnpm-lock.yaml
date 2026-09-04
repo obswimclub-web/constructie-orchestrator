@@ -255,7 +255,11 @@ importers:
         specifier: workspace:*
         version: link:../domain
 
-  packages/observability: {}
+  packages/observability:
+    dependencies:
+      '@co/evidence':
+        specifier: workspace:*
+        version: link:../evidence
 
   packages/orchestrator:
     dependencies:
