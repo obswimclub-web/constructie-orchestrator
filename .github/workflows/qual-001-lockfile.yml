@@ -1,4 +1,4 @@
-name: QUAL-001 Lockfile Bootstrap
+name: QUAL-001 Lockfile Verification
 
 on:
   push:
@@ -8,52 +8,23 @@ permissions:
   contents: read
 
 concurrency:
-  group: qual-001-lockfile-bootstrap
+  group: qual-001-lockfile-verification
   cancel-in-progress: false
 
 jobs:
-  generate-lockfile:
+  verify-lockfile:
     runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, 'chore(qual): commit pnpm lockfile')"
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Node 24
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - name: pnpm 10.15.0
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.15.0
-          run_install: false
-
-      - name: Stop if lockfile already exists
-        id: lockfile
+      - name: Verify Lockfile Presence
         shell: bash
         run: |
-          if [ -f pnpm-lock.yaml ]; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
+          if [ ! -f pnpm-lock.yaml ]; then
+            echo "::error::Lockfile missing! pnpm-lock.yaml must be committed."
+            exit 1
           fi
-
-      - name: Generate lockfile
-        if: steps.lockfile.outputs.exists == 'false'
-        run: pnpm install --lockfile-only --ignore-scripts
-
-      - name: Commit generated lockfile
-        if: steps.lockfile.outputs.exists == 'false'
-        shell: bash
-        run: |
-          test -f pnpm-lock.yaml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add pnpm-lock.yaml
-          git diff --cached --quiet && exit 0
-          git commit -m "chore(qual): commit pnpm lockfile"
-          echo 'Lockfile missing!' && exit 1
+          echo "Lockfile is present."
