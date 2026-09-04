@@ -3,7 +3,7 @@ import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
 import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHmac, timingSafeEqual } from 'crypto';
 import type {
   ProjectDto,
   WorkItemDto,
@@ -27,11 +27,51 @@ const app: express.Express = express();
 app.use(cors());
 app.use(express.json());
 
+// ─── Authentication Middleware ────────────────────────────────────────────────
+app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+
+app.use((req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+  }
+
+  const token = authHeader.substring(7);
+  const secret = process.env.API_SERVICE_TOKEN || '';
+  if (!secret) {
+    return res.status(401).json({ error: 'Server authentication not configured' });
+  }
+
+  const parts = token.split('.');
+  if (parts.length !== 2) {
+    return res.status(401).json({ error: 'Malformed token' });
+  }
+
+  const projectId = parts[0] as string;
+  const signature = parts[1] as string;
+  const hmac = createHmac('sha256', secret);
+  hmac.update(projectId);
+  const expected = hmac.digest('hex');
+
+  try {
+    if (timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+      (req as unknown as express.Request & { authContext: { projectId: string } }).authContext = { projectId };
+      return next();
+    }
+  } catch {
+    // Buffer length mismatch or other crypto error
+  }
+  
+  return res.status(401).json({ error: 'Invalid token signature' });
+});
+
+
 // ─── Projects ─────────────────────────────────────────────────────────────────
 
 app.get('/api/projects', async (req, res) => {
   try {
-    const projects = await prisma.project.findMany();
+    const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+    const projects = await prisma.project.findMany({ where: { id: authProjectId } });
     const dtos: ProjectDto[] = projects.map(p => ({
       ...p,
       createdAt: p.createdAt.toISOString(),
@@ -47,7 +87,8 @@ app.get('/api/projects', async (req, res) => {
 
 app.get('/api/work-items', async (req, res) => {
   try {
-    const items = await prisma.workItem.findMany();
+    const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+    const items = await prisma.workItem.findMany({ where: { projectId: authProjectId } });
     const dtos: WorkItemDto[] = items.map(i => ({
       ...i,
       createdAt: i.createdAt.toISOString(),
@@ -63,7 +104,8 @@ app.get('/api/work-items', async (req, res) => {
 
 app.get('/api/attempts', async (req, res) => {
   try {
-    const attempts = await prisma.attempt.findMany();
+    const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+    const attempts = await prisma.attempt.findMany({ where: { projectId: authProjectId } });
     const dtos: AttemptDto[] = attempts.map(a => ({
       ...a,
       startedAt: a.startedAt?.toISOString() || null,
@@ -81,7 +123,8 @@ app.get('/api/attempts', async (req, res) => {
 
 app.get('/api/evidence', async (req, res) => {
   try {
-    const evidence = await prisma.evidenceRecord.findMany();
+    const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+    const evidence = await prisma.evidenceRecord.findMany({ where: { projectId: authProjectId } });
     const dtos: EvidenceRecordDto[] = evidence.map(e => ({
       ...e,
       observedAt: e.observedAt.toISOString(),
@@ -224,7 +267,8 @@ app.get('/api/approvals', async (req, res) => {
 // Get single approval
 app.get('/api/approvals/:id', async (req, res) => {
   try {
-    const approval = await prisma.approval.findUnique({ where: { id: req.params.id } });
+    const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+    const approval = await prisma.approval.findFirst({ where: { id: req.params.id, projectId: authProjectId } });
     if (!approval) return res.status(404).json({ error: 'Approval not found' });
     res.json(mapApprovalToDto(approval));
   } catch (err) {
@@ -236,6 +280,8 @@ app.get('/api/approvals/:id', async (req, res) => {
 app.post('/api/approvals', async (req, res) => {
   try {
     const body = req.body as CreateApprovalDto;
+    const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+    if (body.projectId !== authProjectId) { return res.status(403).json({ error: 'Project scope mismatch' }); }
     if (!body.projectId || !body.gateKind || !body.scope) {
       return res.status(400).json({ error: 'projectId, gateKind, and scope are required' });
     }
@@ -293,7 +339,8 @@ app.post('/api/approvals/:id/decide', async (req, res) => {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const approval = await tx.approval.findUnique({ where: { id } });
+      const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+      const approval = await tx.approval.findFirst({ where: { id, projectId: authProjectId } });
       if (!approval) return { outcome: 'NOT_FOUND', approval: null };
 
       const decisionTime = new Date();
@@ -361,7 +408,8 @@ app.post('/api/approvals/:id/consume', async (req, res) => {
     
     // Everything inside a single transaction
     const result = await prisma.$transaction(async (tx) => {
-      const approval = await tx.approval.findUnique({ where: { id } });
+      const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+      const approval = await tx.approval.findFirst({ where: { id, projectId: authProjectId } });
       if (!approval) return { outcome: 'NOT_FOUND', approval: null };
 
       const decisionTime = new Date();
@@ -458,7 +506,8 @@ app.post('/api/approvals/:id/consume', async (req, res) => {
 app.post('/api/approvals/:id/verify', async (req, res) => {
   try {
     const { id } = req.params;
-    const approval = await prisma.approval.findUnique({ where: { id } });
+    const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+    const approval = await prisma.approval.findFirst({ where: { id, projectId: authProjectId } });
     if (!approval) return res.status(404).json({ error: 'Approval not found' });
     if (approval.status !== 'USED') {
       return res.status(409).json({ error: 'Post-action verification only allowed on USED approvals' });
@@ -491,7 +540,9 @@ app.get('/api/audit-logs', async (req, res) => {
     const cursor = req.query.cursor as string | undefined;
     const attemptId = req.query.attemptId as string | undefined;
 
+    const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
     const whereClause: import('@prisma/client').Prisma.ProjectEventWhereInput = {
+      projectId: authProjectId,
       eventType: {
         in: [
           'HOST_ACTION_PROPOSED',

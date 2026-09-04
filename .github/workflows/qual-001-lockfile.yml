@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: qual-001-lockfile-bootstrap
@@ -56,4 +56,4 @@ jobs:
           git add pnpm-lock.yaml
           git diff --cached --quiet && exit 0
           git commit -m "chore(qual): commit pnpm lockfile"
-          git push origin HEAD:main
+          echo 'Lockfile missing!' && exit 1

@@ -1,61 +1,66 @@
 {
-    "name": "constructie-orchestrator",
-    "version": "0.0.0",
-    "private": true,
-    "engines": {
-        "node": ">=24 <25",
-        "pnpm": ">=10"
-    },
-    "scripts": {
-        "build": "tsc -b",
-        "typecheck": "tsc -b --pretty false",
-        "test": "vitest run",
-        "test:unit": "vitest run packages",
-        "test:integration": "vitest run tests/integration",
-        "test:e2e": "vitest run tests/e2e",
-        "lint": "eslint .",
-        "format:check": "prettier --check .",
-        "arch:check": "node scripts/check-architecture.mjs",
-        "ci": "pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm arch:check",
-        "db:migrate:sql": "node scripts/apply-sql-migrations.mjs",
-        "test:restart:postgres": "vitest run tests/integration/restart-resume-postgres.spec.ts",
-        "qualification": "pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm test:restart:postgres && pnpm arch:check",
-        "postinstall": "pnpm --filter @co/persistence prisma:generate"
-    },
-    "devDependencies": {
-        "@co/agents": "workspace:*",
-        "@co/completion": "workspace:*",
-        "@co/contracts": "workspace:*",
-        "@co/domain": "workspace:*",
-        "@co/evidence": "workspace:*",
-        "@co/persistence": "workspace:*",
-        "@co/policy": "workspace:*",
-        "@co/reconciliation": "workspace:*",
-        "@co/tools": "workspace:*",
-        "@co/workflow": "workspace:*",
-        "@eslint/js": "^9.0.0",
-        "@prisma/adapter-pg": "^7.10.0",
-        "@prisma/client": "^7.10.0",
-        "@types/node": "^24.0.0",
-        "@types/pg": "^8.23.1",
-        "@types/supertest": "^7.2.1",
-        "eslint": "^9.0.0",
-        "pg": "^8.23.0",
-        "prettier": "^3.0.0",
-        "prisma": "^7.0.0",
-        "supertest": "^7.2.2",
-        "typescript": "^5.9.0",
-        "typescript-eslint": "^8.0.0",
-        "vitest": "^3.0.0",
-        "zod": "^4.0.0"
-    },
-    "packageManager": "pnpm@10.15.0",
-    "pnpm": {
-        "onlyBuiltDependencies": [
-            "@prisma/engines",
-            "esbuild",
-            "prisma",
-            "@prisma/client"
-        ]
+  "name": "constructie-orchestrator",
+  "version": "0.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false",
+    "test": "vitest run",
+    "test:unit": "vitest run packages",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "vitest run tests/e2e",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "arch:check": "node scripts/check-architecture.mjs",
+    "ci": "pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm arch:check",
+    "db:migrate:sql": "node scripts/apply-sql-migrations.mjs",
+    "test:restart:postgres": "vitest run tests/integration/restart-resume-postgres.spec.ts",
+    "qualification": "pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm test:restart:postgres && pnpm arch:check",
+    "postinstall": "pnpm --filter @co/persistence prisma:generate"
+  },
+  "devDependencies": {
+    "@co/agents": "workspace:*",
+    "@co/completion": "workspace:*",
+    "@co/contracts": "workspace:*",
+    "@co/domain": "workspace:*",
+    "@co/evidence": "workspace:*",
+    "@co/persistence": "workspace:*",
+    "@co/policy": "workspace:*",
+    "@co/reconciliation": "workspace:*",
+    "@co/tools": "workspace:*",
+    "@co/workflow": "workspace:*",
+    "@eslint/js": "^9.0.0",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
+    "@types/supertest": "^7.2.1",
+    "eslint": "^9.0.0",
+    "mysql2": "^3.24.3",
+    "pg": "^8.23.0",
+    "prettier": "^3.0.0",
+    "prisma": "^7.0.0",
+    "supertest": "^7.2.2",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.0.0",
+    "zod": "^4.0.0"
+  },
+  "packageManager": "pnpm@10.15.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/engines",
+      "esbuild",
+      "prisma",
+      "@prisma/client"
+    ],
+    "overrides": {
+      "mysql2": "^3.23.1",
+      "deepmerge-ts": "^8.0.0"
     }
+  }
 }
