@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { Redactor, defaultRedactor } from './redactor.js';
 
 export type IncidentSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type IncidentState = 'OPEN' | 'RESOLVED' | 'MITIGATED';
@@ -69,7 +70,12 @@ export class InMemoryIncidentService implements IncidentService {
   private lastHashByIncident = new Map<string, string>();
   private seq = 0;
 
-  constructor(private readonly redactor?: { redact: (s: string) => string }, private readonly idFactory?: () => string) {}
+  constructor(
+    private readonly redactor: Redactor = defaultRedactor,
+    private readonly clock: () => Date = () => new Date(),
+    private readonly idFactory?: () => string,
+    private readonly incidentIdFactory?: () => string
+  ) {}
 
   private appendEvent(
     incidentId: string,
@@ -83,13 +89,14 @@ export class InMemoryIncidentService implements IncidentService {
     resolutionClaim: string | null,
     recoveryEvidenceId: string | null
   ): IncidentEventRecord {
-    const rawDesc = this.redactor ? this.redactor.redact(description) : description;
-    const rawClaim = (resolutionClaim && this.redactor) ? this.redactor.redact(resolutionClaim) : resolutionClaim;
-    const timestamp = new Date();
+    const rawDesc = this.redactor.redact(description);
+    const rawClaim = resolutionClaim ? this.redactor.redact(resolutionClaim) : null;
+    const timestamp = this.clock();
     const sequence = ++this.seq;
-    const id = `inc-evt-${Date.now()}-${sequence}`;
+    const id = this.idFactory ? this.idFactory() : `inc-evt-${timestamp.getTime()}-${sequence}`;
     
-    const previousHash = this.lastHashByIncident.get(`${projectId}:${incidentId}`) ?? null;
+    const key = `${projectId}:${incidentId}`;
+    const previousHash = this.lastHashByIncident.get(key) ?? null;
 
     const payload: string = JSON.stringify({
       id, incidentId, projectId, runId, attemptId, workItemId, state, severity,
@@ -101,13 +108,13 @@ export class InMemoryIncidentService implements IncidentService {
       id, incidentId, projectId, runId, attemptId, workItemId, state, severity,
       description: rawDesc, timestamp, resolutionClaim: rawClaim, recoveryEvidenceId, previousHash, hash, sequence
     };
-    this.lastHashByIncident.set(`${projectId}:${incidentId}`, hash);
+    this.lastHashByIncident.set(key, hash);
     this.events.push(evt);
     return evt;
   }
 
   public openIncident(projectId: string, runId: string, description: string, severity: IncidentSeverity, context?: { attemptId?: string, workItemId?: string }): IncidentEventRecord {
-    const incidentId = this.idFactory ? this.idFactory() : `inc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const incidentId = this.incidentIdFactory ? this.incidentIdFactory() : `inc-${this.clock().getTime()}-${Math.random().toString(36).slice(2, 7)}`;
     return this.appendEvent(incidentId, projectId, runId, context?.attemptId ?? null, context?.workItemId ?? null, 'OPEN', severity, description, null, null);
   }
 
@@ -124,7 +131,6 @@ export class InMemoryIncidentService implements IncidentService {
     if (evts.length === 0) throw new Error('Incident not found');
     const last = evts[evts.length - 1];
     if (!last) throw new Error("Incident not found");
-    if (last.projectId !== projectId) throw new Error('Scope mismatch');
     
     if (last.state === 'RESOLVED') {
       throw new Error(`Cannot transition from RESOLVED to ${state}`);
