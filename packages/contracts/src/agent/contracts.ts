@@ -87,7 +87,7 @@ export const AgentRunResultSchema = z.object({
   unresolvedItems: z.array(z.string()).default([]),
   requestedInputs: z.array(z.string()).default([]),
   sideEffects: z.array(z.string()).default([]),
-  usage: z.object({ inputUnits: z.number().nonnegative().default(0), outputUnits: z.number().nonnegative().default(0), estimatedCost: z.number().nonnegative().default(0), currency: z.string().default('USD') }),
+  usage: z.object({ inputUnits: z.number().nonnegative().default(0), outputUnits: z.number().nonnegative().default(0), estimatedCost: z.number().nonnegative().default(0), currency: z.string().default('USD'), costStatus: z.enum(['KNOWN', 'ESTIMATED', 'UNKNOWN']).default('UNKNOWN') }),
 }).strict();
 export type AgentRunResult = z.infer<typeof AgentRunResultSchema>;
 
@@ -99,7 +99,7 @@ export interface AgentAdapterIdentity {
   contractVersionSupported: string;
 }
 export interface CapabilityProfile { capabilities: Record<string, AgentCapabilityState>; }
-export interface AgentUsage { inputUnits: number; outputUnits: number; estimatedCost: number; currency: string; }
+export interface AgentUsage { inputUnits: number; outputUnits: number; estimatedCost: number; currency: string; costStatus: 'KNOWN' | 'ESTIMATED' | 'UNKNOWN'; }
 export type AdapterHealth = 'AVAILABLE' | 'DEGRADED' | 'UNAVAILABLE' | 'UNKNOWN';
 export interface AgentResumeRequest { runRef: AgentRunRef; runtimeContext: AgentRuntimeContext; }
 export interface AgentCancelRequest { runRef: AgentRunRef; reason: string; }
@@ -107,6 +107,7 @@ export interface AgentCancelResult { runRef: AgentRunRef; status: AgentRunStatus
 
 export interface AgentAdapter {
   capabilities(): Promise<CapabilityProfile>;
+  health(): Promise<AdapterHealth>;
   execute(workPackage: WorkPackage, runtimeContext: AgentRuntimeContext): Promise<AgentRunHandle>;
   resume(resumeRequest: AgentResumeRequest): Promise<AgentRunHandle>;
   cancel(request: AgentCancelRequest): Promise<AgentCancelResult>;

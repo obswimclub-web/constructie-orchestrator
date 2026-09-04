@@ -1,6 +1,6 @@
 /* eslint-disable */
 import { randomUUID } from 'node:crypto';
-import OpenAI from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import type {
   AgentAdapter,
   AgentCancelRequest,
@@ -22,9 +22,9 @@ import {
   TOOL_EXECUTION_REQUEST_SCHEMA_VERSION,
   ToolExecutionRequestSchema,
 } from '@co/contracts';
-import { parseProviderOutput } from './provider-output-parser.js';
+import { parseProviderOutput } from '../codex/provider-output-parser.js';
 
-type CodexRunState = {
+type GeminiRunState = {
   status: AgentRunStatus;
   artifacts: ArtifactRef[];
   evidence: EvidenceRef[];
@@ -33,25 +33,26 @@ type CodexRunState = {
 };
 
 /**
- * CodexAdapter
+ * GeminiAdapter
  *
- * Implements AgentAdapter for OpenAI-based code generation.
+ * Implements AgentAdapter for GoogleGenerativeAI-based code generation.
  */
-export class CodexAdapter implements AgentAdapter {
-  private readonly runs = new Map<string, CodexRunState>();
+export class GeminiAdapter implements AgentAdapter {
+  private readonly runs = new Map<string, GeminiRunState>();
 
   constructor(
     private readonly gateway: ToolGateway,
-    private readonly agentId: string = 'codex-adapter',
-    private readonly openaiClientFactory?: (apiKey: string) => any,
+    private readonly agentId: string = 'gemini-adapter',
+    private readonly googleClientFactory?: (apiKey: string) => any,
   ) {}
 
   async health(): Promise<AdapterHealth> {
     try {
-      const apiKey = process.env.OPENAI_API_KEY;
+      const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) return 'UNAVAILABLE';
-      const client = this.openaiClientFactory ? this.openaiClientFactory(apiKey) : new OpenAI({ apiKey });
-      await client.chat.completions.create({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'ping' }], max_tokens: 1 }, { timeout: 2000 });
+      const client = this.googleClientFactory ? this.googleClientFactory(apiKey) : new GoogleGenerativeAI(apiKey);
+      const model = client.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      await model.generateContent({ contents: [{ role: 'user', parts: [{ text: 'ping' }] }], generationConfig: { maxOutputTokens: 1 } });
       return 'AVAILABLE';
     } catch (e: any) {
       if (e.status === 401 || e.status === 403) return 'UNAVAILABLE';
@@ -91,7 +92,7 @@ export class CodexAdapter implements AgentAdapter {
     });
 
     const apiKey = runtimeContext.secretRefs.includes('OPENAI_API_KEY')
-      ? process.env.OPENAI_API_KEY
+      ? process.env.GEMINI_API_KEY
       : undefined;
 
     if (!apiKey) {
@@ -101,16 +102,16 @@ export class CodexAdapter implements AgentAdapter {
           {
             type: 'error',
             claimSupported: 'Missing API Key',
-            sourceRef: 'CodexAdapter',
+            sourceRef: 'GeminiAdapter',
           },
         ],
       });
       return { runId, status: 'FAILED' };
     }
 
-    const openai = this.openaiClientFactory
-      ? this.openaiClientFactory(apiKey)
-      : new OpenAI({ apiKey });
+    const client = this.googleClientFactory
+      ? this.googleClientFactory(apiKey)
+      : new GoogleGenerativeAI(apiKey);
 
     // Set up timeout if timeBudgetMs is specified
     if (runtimeContext.timeBudgetMs) {
@@ -120,14 +121,13 @@ export class CodexAdapter implements AgentAdapter {
           status: 'FAILED',
           evidence: [
             ...(this.runs.get(runId)?.evidence ?? []),
-            { type: 'error', claimSupported: 'Timeout', sourceRef: 'CodexAdapter' },
+            { type: 'error', claimSupported: 'Timeout', sourceRef: 'GeminiAdapter' },
           ],
         });
       }, runtimeContext.timeBudgetMs);
     }
 
-    // Perform async execution without blocking start return
-    this.performExecution(runId, openai, workPackage, runtimeContext, abortController.signal).catch(
+    this.performExecution(runId, client, workPackage, runtimeContext, abortController.signal).catch(
       () => {},
     );
 
@@ -136,31 +136,27 @@ export class CodexAdapter implements AgentAdapter {
 
   private async performExecution(
     runId: string,
-    openai: any,
+    client: any,
     wp: WorkPackage,
     ctx: AgentRuntimeContext,
     signal: AbortSignal,
   ) {
     const MAX_RETRIES = 3;
-    let lastError: any = null;
     const retryEvidence: EvidenceRef[] = [];
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       if (signal.aborted) return;
       try {
-        const response = await openai.chat.completions.create(
+        // Gemini uses getGenerativeModel().generateContent() API
+        const model = client.getGenerativeModel({ model: 'gemini-1.5-pro' });
+        const result = await model.generateContent(
           {
-            model: 'gpt-4o',
-            messages: [{ role: 'system', content: wp.objective }],
-          },
-          {
-            idempotencyKey: `${ctx.attemptId}-${runId}`,
-            signal,
+            contents: [{ role: 'user', parts: [{ text: wp.objective }] }],
           },
         );
 
-        const choice = response.choices[0];
-        const content = choice?.message?.content ?? '';
+        const response = result.response ?? result;
+        const content = typeof response.text === 'function' ? response.text() : (response.choices?.[0]?.message?.content ?? '');
 
         // Malformed output detection
         let structured;
@@ -175,7 +171,7 @@ export class CodexAdapter implements AgentAdapter {
           this.updateState(runId, {
             status: 'FAILED',
             evidence: [
-              { type: 'malformed_output', claimSupported: `Parse error: ${parseErr.message}`, sourceRef: 'CodexAdapter' },
+              { type: 'malformed_output', claimSupported: `Parse error: ${parseErr.message}`, sourceRef: 'GeminiAdapter' },
             ],
           });
           return;
@@ -189,13 +185,12 @@ export class CodexAdapter implements AgentAdapter {
           this.updateState(runId, {
             status: 'FAILED',
             evidence: [
-              { type: 'malformed_output', claimSupported: 'Model returned malformed JSON without valid code block', sourceRef: 'CodexAdapter' },
+              { type: 'malformed_output', claimSupported: 'Model returned malformed JSON without valid code block', sourceRef: 'GeminiAdapter' },
             ],
           });
           return;
         }
 
-        // Submit each tool proposal through the gateway (policy enforcement point)
         let runStatus: AgentRunStatus = 'COMPLETED';
         const denialEvidence: EvidenceRef[] = [];
 
@@ -232,10 +227,16 @@ export class CodexAdapter implements AgentAdapter {
           }
         }
 
+        // Gemini: usageMetadata.promptTokenCount / candidatesTokenCount
+        // Also support OpenAI mock shape: usage.prompt_tokens / usage.completion_tokens
+        const usageMeta = response.usageMetadata ?? {};
+        const inputUnits = usageMeta.promptTokenCount ?? response.usage?.prompt_tokens ?? 0;
+        const outputUnits = usageMeta.candidatesTokenCount ?? response.usage?.completion_tokens ?? 0;
+
         this.updateState(runId, {
           status: runStatus,
           artifacts: [
-            ...structured.artifacts.map(a => ({
+            ...structured.artifacts.map((a: any) => ({
               artifactId: randomUUID(),
               type: (a.type as ArtifactRef['type']) || 'PATCH' as const,
               ref: a.ref,
@@ -249,15 +250,15 @@ export class CodexAdapter implements AgentAdapter {
           evidence: [
             {
               type: 'model',
-              claimSupported: response.model,
-              sourceRef: response.id,
+              claimSupported: response.model ?? 'gemini',
+              sourceRef: response.id ?? randomUUID(),
             },
             ...denialEvidence,
             ...retryEvidence,
           ],
           usage: {
-            inputUnits: response.usage?.prompt_tokens ?? 0,
-            outputUnits: response.usage?.completion_tokens ?? 0,
+            inputUnits,
+            outputUnits,
             estimatedCost: 0,
             currency: 'USD',
             costStatus: 'UNKNOWN',
@@ -265,14 +266,13 @@ export class CodexAdapter implements AgentAdapter {
         });
         return; // success
       } catch (error: any) {
-        lastError = error;
         const status = error.status;
 
         if (status === 429) {
           retryEvidence.push({
             type: 'retry',
             claimSupported: `Rate limited (429) on attempt ${attempt + 1}`,
-            sourceRef: 'CodexAdapter',
+            sourceRef: 'GeminiAdapter',
           });
           if (attempt < MAX_RETRIES - 1) {
             await new Promise(r => setTimeout(r, 100));
@@ -287,7 +287,7 @@ export class CodexAdapter implements AgentAdapter {
           retryEvidence.push({
             type: 'retry',
             claimSupported: `Server error (${status}) on attempt ${attempt + 1}`,
-            sourceRef: 'CodexAdapter',
+            sourceRef: 'GeminiAdapter',
           });
           if (attempt < MAX_RETRIES - 1) {
             await new Promise(r => setTimeout(r, 100));
@@ -299,7 +299,6 @@ export class CodexAdapter implements AgentAdapter {
           });
           return;
         } else if (error.name === 'AbortError' || signal.aborted) {
-          // Timeout or cancellation - state already set by abort handler
           return;
         } else {
           this.updateState(runId, { status: 'FAILED' });
@@ -310,7 +309,7 @@ export class CodexAdapter implements AgentAdapter {
   }
 
   async resume(_resumeRequest: AgentResumeRequest): Promise<AgentRunHandle> {
-    throw new Error('UNSUPPORTED: CodexAdapter does not support genuine session resumption.');
+    throw new Error('UNSUPPORTED: GeminiAdapter does not support genuine session resumption.');
   }
 
   async cancel(request: AgentCancelRequest): Promise<AgentCancelResult> {
@@ -346,7 +345,7 @@ export class CodexAdapter implements AgentAdapter {
     );
   }
 
-  private updateState(runId: string, partial: Partial<CodexRunState>) {
+  private updateState(runId: string, partial: Partial<GeminiRunState>) {
     const current = this.runs.get(runId);
     if (current) {
       Object.assign(current, partial);

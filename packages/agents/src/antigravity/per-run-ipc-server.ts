@@ -97,8 +97,8 @@ export class PerRunIpcServer {
 
   public async stop(): Promise<void> {
     return new Promise((resolve) => {
-      if (this.server) {
-        this.server.close(() => {
+      if (this.server) { const timer = setTimeout(() => resolve(), 100);
+        this.server.close(() => { clearTimeout(timer);
           try {
             if (fs.existsSync(this.socketPath)) {
               fs.unlinkSync(this.socketPath);

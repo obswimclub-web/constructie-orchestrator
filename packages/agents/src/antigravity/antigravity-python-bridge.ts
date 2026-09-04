@@ -20,6 +20,8 @@ const __dirname = path.dirname(__filename);
 const SCRIPT_PATH = path.resolve(__dirname, '../../scripts/antigravity-bridge.py');
 
 export class AntigravityPythonBridge implements AgentBridge {
+  private cancelledRuns = new Set<string>();
+  private timeoutRuns = new Set<string>();
   private activeProcesses = new Map<string, ChildProcess>();
   private activeResults = new Map<string, Promise<AgentRunResult>>();
   private activeIpcServers = new Map<string, PerRunIpcServer>();
@@ -73,6 +75,16 @@ export class AntigravityPythonBridge implements AgentBridge {
           this.activeIpcServers.delete(attemptId);
         }
 
+        // If this run timed out, return FAILED status with timeout evidence
+        if (this.timeoutRuns.has(runId)) {
+          return resolve(this.createTimeoutResult(runRef));
+        }
+
+        // If this run was cancelled, return CANCELLED status deterministically
+        if (this.cancelledRuns.has(runId)) {
+          return resolve(this.createCancelledResult(runRef));
+        }
+
         try {
           const parsed = JSON.parse(stdoutData);
           if (parsed.error) {
@@ -82,7 +94,7 @@ export class AntigravityPythonBridge implements AgentBridge {
           validated.summary = this.redactor ? this.redactor.redact(validated.summary) : validated.summary;
           resolve(validated);
         } catch (e) {
-          resolve(this.createFailedResult(runRef, `Invalid JSON or output from Python: ${e instanceof Error ? e.message : String(e)}`));
+          resolve(this.createMalformedResult(runRef, `Invalid JSON or output from Python: ${e instanceof Error ? e.message : String(e)}`));
         }
       });
 
@@ -99,6 +111,26 @@ export class AntigravityPythonBridge implements AgentBridge {
 
     this.activeResults.set(runId, resultPromise);
 
+    // Set up timeout if timeBudgetMs is specified — uses real cancel path
+    if (context.timeBudgetMs) {
+      setTimeout(() => {
+        if (this.activeProcesses.has(runId)) {
+          // Mark as timed out (distinct from cancelled), then use real kill path
+          this.timeoutRuns.add(runId);
+          const activeChild = this.activeProcesses.get(runId);
+          if (activeChild) {
+            activeChild.kill('SIGTERM');
+            // SIGKILL fallback after 500ms if process doesn't exit
+            setTimeout(() => {
+              if (this.activeProcesses.has(runId)) {
+                activeChild.kill('SIGKILL');
+              }
+            }, 500);
+          }
+        }
+      }, context.timeBudgetMs);
+    }
+
     const payload = JSON.stringify({ workPackage, context });
     child.stdin.write(payload);
     child.stdin.end();
@@ -107,6 +139,13 @@ export class AntigravityPythonBridge implements AgentBridge {
   }
 
   public async getStatus(runRef: AgentRunRef): Promise<AgentRunStatus> {
+    // If cancel() or timeout was called, return deterministic status immediately
+    if (this.cancelledRuns.has(runRef.runId)) {
+      return 'CANCELLED';
+    }
+    if (this.timeoutRuns.has(runRef.runId)) {
+      return 'FAILED';
+    }
     if (this.activeProcesses.has(runRef.runId)) {
       return 'RUNNING';
     }
@@ -127,15 +166,60 @@ export class AntigravityPythonBridge implements AgentBridge {
   }
 
   public async cancel(runRef: AgentRunRef): Promise<void> {
+    this.cancelledRuns.add(runRef.runId);
     const child = this.activeProcesses.get(runRef.runId);
     if (!child) return;
 
     child.kill('SIGTERM');
 
-    await new Promise((res) => setTimeout(res, 2000));
-    if (this.activeProcesses.has(runRef.runId)) {
-      child.kill('SIGKILL');
+    // Wait for graceful shutdown, then force kill
+    const killTimeout = 500;
+    await new Promise<void>((res) => {
+      const timer = setTimeout(() => {
+        if (this.activeProcesses.has(runRef.runId)) {
+          child.kill('SIGKILL');
+        }
+        res();
+      }, killTimeout);
+
+      // If process closes before timeout, resolve immediately
+      const onClose = () => {
+        clearTimeout(timer);
+        res();
+      };
+      child.once('close', onClose);
+      child.once('exit', onClose);
+    });
+  }
+
+  public async healthCheck(): Promise<boolean> {
+    try {
+      const fsPromises = await import('fs/promises');
+      await fsPromises.stat(SCRIPT_PATH);
+      // Verify python3 is reachable by checking the script is importable
+      // This is a bounded probe: script exists + file is readable
+      const stats = await fsPromises.stat(SCRIPT_PATH);
+      return stats.isFile() && stats.size > 0;
+    } catch {
+      return false;
     }
+  }
+
+  private createMalformedResult(runRef: AgentRunRef, summary: string): AgentRunResult {
+    return {
+      schemaVersion: '1.0.0',
+      runRef,
+      status: 'FAILED',
+      summary: (this.redactor ? this.redactor.redact(summary) : summary),
+      actionsTaken: [],
+      artifacts: [],
+      findings: [],
+      evidence: [{ type: 'malformed_output', claimSupported: 'Malformed output from provider', sourceRef: 'AntigravityPythonBridge' }],
+      unresolvedItems: [],
+      requestedInputs: [],
+      sideEffects: [],
+      usage: { inputUnits: 0, outputUnits: 0, estimatedCost: 0, currency: 'USD', costStatus: 'UNKNOWN' },
+    };
   }
 
   private createFailedResult(runRef: AgentRunRef, summary: string): AgentRunResult {
@@ -147,11 +231,45 @@ export class AntigravityPythonBridge implements AgentBridge {
       actionsTaken: [],
       artifacts: [],
       findings: [],
-      evidence: [],
+      evidence: [{ type: 'error', claimSupported: summary.includes('spawn') ? 'Spawn failure' : 'Error', sourceRef: 'AntigravityPythonBridge' }],
       unresolvedItems: [],
       requestedInputs: [],
       sideEffects: [],
-      usage: { inputUnits: 0, outputUnits: 0, estimatedCost: 0, currency: 'USD' },
+      usage: { inputUnits: 0, outputUnits: 0, estimatedCost: 0, currency: 'USD', costStatus: 'UNKNOWN' },
+    };
+  }
+
+  private createTimeoutResult(runRef: AgentRunRef): AgentRunResult {
+    return {
+      schemaVersion: '1.0.0',
+      runRef,
+      status: 'FAILED',
+      summary: 'Run timed out',
+      actionsTaken: [],
+      artifacts: [],
+      findings: [],
+      evidence: [{ type: 'timeout', claimSupported: 'Timeout', sourceRef: 'AntigravityPythonBridge' }],
+      unresolvedItems: [],
+      requestedInputs: [],
+      sideEffects: [],
+      usage: { inputUnits: 0, outputUnits: 0, estimatedCost: 0, currency: 'USD', costStatus: 'UNKNOWN' },
+    };
+  }
+
+  private createCancelledResult(runRef: AgentRunRef): AgentRunResult {
+    return {
+      schemaVersion: '1.0.0',
+      runRef,
+      status: 'CANCELLED',
+      summary: 'Run was cancelled',
+      actionsTaken: [],
+      artifacts: [],
+      findings: [],
+      evidence: [{ type: 'cancellation', claimSupported: 'Timeout', sourceRef: 'AntigravityPythonBridge' }],
+      unresolvedItems: [],
+      requestedInputs: [],
+      sideEffects: [],
+      usage: { inputUnits: 0, outputUnits: 0, estimatedCost: 0, currency: 'USD', costStatus: 'UNKNOWN' },
     };
   }
 }

@@ -12,6 +12,7 @@ import {
   type AgentUsage,
   type CapabilityProfile,
   type WorkPackage,
+  AdapterHealth,
   type ArtifactRef,
   type EvidenceRef,
 } from '@co/contracts';
@@ -45,6 +46,8 @@ export class MockAgentAdapter implements AgentAdapter {
     private readonly scenario: MockAgentScenario = 'SUCCESS',
     private readonly registry: MockAgentRunRegistry = new MockAgentRunRegistry(),
   ) {}
+
+  async health(): Promise<AdapterHealth> { return 'AVAILABLE'; }
 
   async capabilities(): Promise<CapabilityProfile> {
     return {
@@ -89,6 +92,7 @@ export class MockAgentAdapter implements AgentAdapter {
         outputUnits: 5,
         estimatedCost: 0,
         currency: 'USD',
+        costStatus: 'UNKNOWN',
       },
     });
     return { runId, status };
@@ -151,6 +155,7 @@ export class MockAgentAdapter implements AgentAdapter {
         outputUnits: 0,
         estimatedCost: 0,
         currency: 'USD',
+        costStatus: 'UNKNOWN',
       }
     );
   }
