@@ -5,6 +5,7 @@
   "references": [
     { "path": "../domain" },
     { "path": "../evidence" },
-    { "path": "../policy" }
+    { "path": "../policy" },
+    { "path": "../observability" }
   ]
 }
