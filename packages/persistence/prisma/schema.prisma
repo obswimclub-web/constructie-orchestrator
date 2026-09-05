@@ -152,6 +152,8 @@ model EvidenceRecord {
   @@index([projectId, attemptId])
   @@index([artifactId])
   @@index([approvalId])
+  @@index([scmCommitSha])
+  @@index([deploymentUri])
   @@map("evidence_records")
 }
 
@@ -233,4 +235,47 @@ model ApprovalAuditEvent {
 
   @@index([approvalId])
   @@map("approval_audit_events")
+}
+
+model ExecutionLogRecord {
+  id           String   @id
+  projectId    String   @map("project_id") @db.Uuid
+  runId        String   @map("run_id")
+  attemptId    String?  @map("attempt_id") @db.Uuid
+  workItemId   String?  @map("work_item_id") @db.Uuid
+  stream       String
+  message      String
+  sequence     Int
+  timestamp    DateTime
+  metadata     Json?
+  previousHash String?  @map("previous_hash")
+  hash         String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([projectId, runId, sequence])
+  @@index([projectId, attemptId])
+  @@map("execution_log_records")
+}
+
+model IncidentEventRecord {
+  id                 String   @id
+  incidentId         String   @map("incident_id")
+  projectId          String   @map("project_id") @db.Uuid
+  runId              String   @map("run_id")
+  attemptId          String?  @map("attempt_id") @db.Uuid
+  workItemId         String?  @map("work_item_id") @db.Uuid
+  state              String
+  severity           String
+  description        String
+  timestamp          DateTime
+  resolutionClaim    String?  @map("resolution_claim")
+  recoveryEvidenceId String?  @map("recovery_evidence_id")
+  previousHash       String?  @map("previous_hash")
+  hash               String
+  sequence           Int
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@index([projectId, incidentId, sequence])
+  @@index([projectId, runId])
+  @@map("incident_event_records")
 }

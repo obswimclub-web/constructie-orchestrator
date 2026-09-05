@@ -16,6 +16,7 @@
     "@co/domain": "workspace:*",
     "@co/evidence": "workspace:*",
     "@co/policy": "workspace:*",
+    "@co/observability": "workspace:*",
     "@prisma/client": "^7.0.0"
   },
   "devDependencies": {
