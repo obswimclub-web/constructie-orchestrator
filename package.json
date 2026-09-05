@@ -28,6 +28,7 @@
     "@co/contracts": "workspace:*",
     "@co/domain": "workspace:*",
     "@co/evidence": "workspace:*",
+    "@co/observability": "workspace:*",
     "@co/persistence": "workspace:*",
     "@co/policy": "workspace:*",
     "@co/reconciliation": "workspace:*",

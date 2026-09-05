@@ -27,6 +27,9 @@ importers:
       '@co/evidence':
         specifier: workspace:*
         version: link:packages/evidence
+      '@co/observability':
+        specifier: workspace:*
+        version: link:packages/observability
       '@co/persistence':
         specifier: workspace:*
         version: link:packages/persistence
@@ -281,6 +284,9 @@ importers:
       '@co/evidence':
         specifier: workspace:*
         version: link:../evidence
+      '@co/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@co/policy':
         specifier: workspace:*
         version: link:../policy

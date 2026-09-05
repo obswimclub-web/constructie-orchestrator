@@ -3,3 +3,7 @@ export * from "./work/index.js";
 export * from './project/prisma-event-ledger.js';
 export * from './project/prisma-action-audit-ledger.js';
 export * from './evidence/prisma-evidence-store.js';
+export * from './observability/prisma-logger.js';
+export * from './observability/prisma-incident-store.js';
+export * from './observability/prisma-traceability.js';
+export * from './observability/async-mutex.js';

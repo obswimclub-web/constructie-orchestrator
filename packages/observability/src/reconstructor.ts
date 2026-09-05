@@ -191,3 +191,34 @@ export class TraceabilityEngine {
     };
   }
 }
+
+export const CAN_RECONSTRUCT_RUN_FROM_PERSISTED_OR_DURABLE_RECORDS = true;
+
+export class RunReconstructor {
+  public static reconstructByRun(
+    projectId: string,
+    runId: string,
+    logs: readonly ExecutionLogRecord[],
+    incidents: readonly IncidentEventRecord[]
+  ): TimelineEvent[] {
+    const events: TimelineEvent[] = [];
+
+    for (const log of logs) {
+      if (log.projectId === projectId && log.runId === runId) {
+        events.push({ timestamp: log.timestamp, id: log.id, type: 'LOG', data: log });
+      }
+    }
+
+    for (const inc of incidents) {
+      if (inc.projectId === projectId && inc.runId === runId) {
+        events.push({ timestamp: inc.timestamp, id: inc.id, type: 'INCIDENT_EVENT', data: inc });
+      }
+    }
+
+    return events.sort((a, b) => {
+      const tDiff = a.timestamp.getTime() - b.timestamp.getTime();
+      if (tDiff !== 0) return tDiff;
+      return a.id.localeCompare(b.id);
+    });
+  }
+}
