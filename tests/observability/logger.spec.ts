@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { IncidentEventRecord } from "../../packages/observability/src/incidents.js";
 import { describe, expect, it } from 'vitest';
 import { InMemoryLogger, InMemoryIncidentService, AttemptReconstructor, TraceabilityEngine, IntegrityVerifier, IncidentIntegrityVerifier, packageName, defaultSanitize, sanitizeValue } from '../../packages/observability/src/index.js';
-import { assertVerificationCanCompleteWorkItem, type EvidenceRecord, type VerificationRecord } from '../../packages/evidence/src/records.js';
+import { assertVerificationCanCompleteWorkItem, computeEvidenceDigest, computeVerificationDigest, type EvidenceRecord, type VerificationRecord } from '../../packages/evidence/src/records.js';
 
 describe('Observability Logger', () => {
   it('persists ExecutionLog entries with project isolation', () => {
@@ -152,24 +152,44 @@ describe('Evidence Verification', () => {
     };
     const ev1: EvidenceRecord = { ...baseEv, currentness: 'STALE' };
     const ev2: EvidenceRecord = { ...baseEv, id: 'e2', currentness: 'INVALIDATED' };
-    const ev3: EvidenceRecord = { ...baseEv, id: 'e3', currentness: 'CURRENT' };
+    const rawEv3 = { ...baseEv, id: 'e3', currentness: 'CURRENT' as const };
+    const ev3: EvidenceRecord = {
+      ...rawEv3,
+      digest: computeEvidenceDigest(rawEv3),
+    };
 
-    const verification: VerificationRecord = {
+    const baseVerification = {
       id: 'v1', projectId: 'p1', runId: 'r1', workItemId: 'w1', attemptId: 'a1',
-      verificationType: 'TEST', status: 'PASS', evidenceIds: ['e1'], verifierRef: 'vr1',
-      completionDecisionId: null, verifiedAt: new Date(), createdAt: new Date()
+      verificationType: 'TEST' as const, status: 'PASS' as const,
+      completionDecisionId: null, verifiedAt: new Date(), createdAt: new Date(),
+      verifierRef: 'vr1',
+    };
+    const verificationStale: VerificationRecord = {
+      ...baseVerification,
+      evidenceIds: ['e1'],
+      digest: computeVerificationDigest({ ...baseVerification, evidenceIds: ['e1'] }),
+    };
+    const verificationInvalidated: VerificationRecord = {
+      ...baseVerification,
+      evidenceIds: ['e2'],
+      digest: computeVerificationDigest({ ...baseVerification, evidenceIds: ['e2'] }),
+    };
+    const verificationCurrent: VerificationRecord = {
+      ...baseVerification,
+      evidenceIds: ['e3'],
+      digest: computeVerificationDigest({ ...baseVerification, evidenceIds: ['e3'] }),
     };
 
     expect(() => assertVerificationCanCompleteWorkItem({
-      projectId: 'p1', workItemId: 'w1', verification, evidence: [ev1]
+      projectId: 'p1', workItemId: 'w1', verification: verificationStale, evidence: [ev1]
     })).toThrowError(/STALE/);
 
     expect(() => assertVerificationCanCompleteWorkItem({
-      projectId: 'p1', workItemId: 'w1', verification: { ...verification, evidenceIds: ['e2'] }, evidence: [ev2]
+      projectId: 'p1', workItemId: 'w1', verification: verificationInvalidated, evidence: [ev2]
     })).toThrowError(/INVALIDATED/);
 
     expect(() => assertVerificationCanCompleteWorkItem({
-      projectId: 'p1', workItemId: 'w1', verification: { ...verification, evidenceIds: ['e3'] }, evidence: [ev3]
+      projectId: 'p1', workItemId: 'w1', verification: verificationCurrent, evidence: [ev3]
     })).not.toThrow();
   });
 });

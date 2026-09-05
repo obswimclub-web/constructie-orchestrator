@@ -216,9 +216,6 @@ export function assertVerificationCanCompleteWorkItem(input: {
   if (verification.evidenceIds.length === 0) {
     throw new VerificationEvidenceError('PASS verification must reference at least one EvidenceRecord.');
   }
-  if (verification.digest && !verifyVerificationIntegrity(verification)) {
-    throw new EvidenceTamperedError(`Verification ${verification.id} integrity verification failed: digest mismatch.`);
-  }
   const evidenceById = new Map(input.evidence.map((record) => [record.id, record]));
   for (const evidenceId of verification.evidenceIds) {
     const record = evidenceById.get(evidenceId);
@@ -229,12 +226,20 @@ export function assertVerificationCanCompleteWorkItem(input: {
     if (record.currentness !== 'CURRENT') {
       throw new VerificationEvidenceError(`Evidence ${evidenceId} is ${record.currentness}, not CURRENT.`);
     }
-    if (verification.digest || record.digest !== undefined) {
-      if (!record.digest || !verifyEvidenceIntegrity(record)) {
-        throw new EvidenceTamperedError(
-          `Evidence ${evidenceId} integrity verification failed: missing or invalid digest.`
-        );
-      }
+  }
+
+  if (!verification.digest || !verification.digest.trim() || !verifyVerificationIntegrity(verification)) {
+    throw new EvidenceTamperedError(
+      `Verification ${verification.id} integrity verification failed: missing or invalid digest.`
+    );
+  }
+
+  for (const evidenceId of verification.evidenceIds) {
+    const record = evidenceById.get(evidenceId)!;
+    if (!record.digest || !record.digest.trim() || !verifyEvidenceIntegrity(record)) {
+      throw new EvidenceTamperedError(
+        `Evidence ${evidenceId} integrity verification failed: missing or invalid digest.`
+      );
     }
   }
 }

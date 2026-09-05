@@ -234,5 +234,75 @@ describe('Evidence & Verification Records — Unit Tests', () => {
         evidence: [validEvidence],
       })
     ).toThrow(VerificationEvidenceError);
+
+
+    // Missing/null/empty/tampered evidence digest must fail closed
+    for (const invalidDigest of [undefined, null, '', '   ', 'tampered-digest']) {
+      const badEvidence: EvidenceRecord = {
+        ...validEvidence,
+        digest: invalidDigest as string | null | undefined,
+      };
+      expect(() =>
+        assertVerificationCanCompleteWorkItem({
+          projectId: 'p1',
+          workItemId: 'w1',
+          verification: verification,
+          evidence: [badEvidence],
+        })
+      ).toThrow(EvidenceTamperedError);
+    }
+
+    // Missing/null/empty/tampered verification digest must fail closed
+    for (const invalidDigest of [undefined, null, '', '   ', 'tampered-digest']) {
+      const badVerification: VerificationRecord = {
+        ...verification,
+        digest: invalidDigest as string | null | undefined,
+      };
+      expect(() =>
+        assertVerificationCanCompleteWorkItem({
+          projectId: 'p1',
+          workItemId: 'w1',
+          verification: badVerification,
+          evidence: [validEvidence],
+        })
+      ).toThrow(EvidenceTamperedError);
+    }
+
+    // Non-verifier:1 verification and evidence missing digest must both fail closed (throw EvidenceTamperedError)
+    const nonVerifier1 = 'verifier:custom-runner-non-default';
+    const nonVerifier1VerificationMissingDigest: VerificationRecord = {
+      ...verification,
+      verifierRef: nonVerifier1,
+      digest: undefined,
+    };
+    expect(() =>
+      assertVerificationCanCompleteWorkItem({
+        projectId: 'p1',
+        workItemId: 'w1',
+        verification: nonVerifier1VerificationMissingDigest,
+        evidence: [validEvidence],
+      })
+    ).toThrow(EvidenceTamperedError);
+
+    const nonVerifier1VerificationValid: VerificationRecord = {
+      ...verification,
+      verifierRef: nonVerifier1,
+      digest: computeVerificationDigest({
+        ...verification,
+        verifierRef: nonVerifier1,
+      }),
+    };
+    const evidenceMissingDigest: EvidenceRecord = {
+      ...validEvidence,
+      digest: undefined,
+    };
+    expect(() =>
+      assertVerificationCanCompleteWorkItem({
+        projectId: 'p1',
+        workItemId: 'w1',
+        verification: nonVerifier1VerificationValid,
+        evidence: [evidenceMissingDigest],
+      })
+    ).toThrow(EvidenceTamperedError);
   });
 });

@@ -1,14 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { assertVerificationCanCompleteWorkItem, type EvidenceRecord, type VerificationRecord } from '@co/evidence';
+import {
+  assertVerificationCanCompleteWorkItem,
+  computeEvidenceDigest,
+  computeVerificationDigest,
+  type EvidenceRecord,
+  type VerificationRecord,
+} from '@co/evidence';
 
 const now = new Date('2026-08-20T12:00:00.000Z');
-const evidence: EvidenceRecord = {
+const baseEvidence = {
   id: 'e1', runId: 'r1', projectId: 'p1', workItemId: 'w1', artifactId: 'a1', claim: 'tests passed',
-  sourceType: 'TOOL_RESULT', sourceRef: 'tool-1', currentness: 'CURRENT', observedAt: now, createdAt: now,
+  sourceType: 'TOOL_RESULT' as const, sourceRef: 'tool-1', currentness: 'CURRENT' as const, observedAt: now, createdAt: now,
+};
+const evidence: EvidenceRecord = {
+  ...baseEvidence,
+  digest: computeEvidenceDigest(baseEvidence),
+};
+const baseVerification = {
+  id: 'v1', runId: 'r1', projectId: 'p1', workItemId: 'w1', verificationType: 'TEST' as const, status: 'PASS' as const,
+  evidenceIds: ['e1'], verifierRef: 'verifier:test', verifiedAt: now, createdAt: now,
 };
 const verification: VerificationRecord = {
-  id: 'v1', runId: 'r1', projectId: 'p1', workItemId: 'w1', verificationType: 'TEST', status: 'PASS',
-  evidenceIds: ['e1'], verifierRef: 'verifier:test', verifiedAt: now, createdAt: now,
+  ...baseVerification,
+  digest: computeVerificationDigest(baseVerification),
 };
 
 describe('evidence-bound completion', () => {
