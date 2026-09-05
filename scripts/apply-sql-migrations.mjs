@@ -16,6 +16,7 @@ const migrationFiles = [
   'packages/persistence/prisma/migrations/0004_completion_decisions/migration.sql',
   'packages/persistence/prisma/migrations/0005_attempt_agent_run_binding/migration.sql',
   'packages/persistence/prisma/migrations/0006_real_approval_model/migration.sql',
+  'packages/persistence/prisma/migrations/0007_p9_evidence_lineage/migration.sql',
 ];
 
 for (const relative of migrationFiles) {

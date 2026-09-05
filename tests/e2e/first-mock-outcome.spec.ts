@@ -21,6 +21,8 @@ import {
 } from '@co/domain';
 import {
   EvidenceVerificationService,
+  computeEvidenceDigest,
+  computeVerificationDigest,
   type ArtifactRecord,
   type EvidenceRecord,
   type EvidenceStore,
@@ -85,8 +87,22 @@ class InMemoryEvidenceStore implements EvidenceStore {
   readonly evidence: EvidenceRecord[] = [];
   readonly verifications: VerificationRecord[] = [];
   async saveArtifact(record: ArtifactRecord): Promise<ArtifactRecord> { this.artifacts.push(record); return record; }
-  async saveEvidence(record: EvidenceRecord): Promise<EvidenceRecord> { this.evidence.push(record); return record; }
-  async saveVerification(record: VerificationRecord): Promise<VerificationRecord> { this.verifications.push(record); return record; }
+  async saveEvidence(record: EvidenceRecord): Promise<EvidenceRecord> {
+    const saved: EvidenceRecord = {
+      ...record,
+      digest: record.digest ?? computeEvidenceDigest(record),
+    };
+    this.evidence.push(saved);
+    return saved;
+  }
+  async saveVerification(record: VerificationRecord): Promise<VerificationRecord> {
+    const saved: VerificationRecord = {
+      ...record,
+      digest: record.digest ?? computeVerificationDigest(record),
+    };
+    this.verifications.push(saved);
+    return saved;
+  }
   async listEvidenceForWorkItem(projectId: string, workItemId: string): Promise<readonly EvidenceRecord[]> {
     return this.evidence.filter((e) => e.projectId === projectId && e.workItemId === workItemId);
   }
