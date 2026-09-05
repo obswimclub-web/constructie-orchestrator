@@ -113,47 +113,66 @@ model Attempt {
 model ArtifactRecord {
   id         String   @id @db.Uuid
   projectId  String   @map("project_id") @db.Uuid
+  runId      String   @map("run_id")
   workItemId String   @map("work_item_id") @db.Uuid
   attemptId  String?  @map("attempt_id") @db.Uuid
   kind       String
   uri        String
   hash       String?
   producedBy String   @map("produced_by")
+  digest     String?  @map("digest")
   createdAt  DateTime @default(now()) @map("created_at")
 
   @@index([projectId, workItemId])
+  @@index([projectId, runId])
   @@map("artifact_records")
 }
 
 model EvidenceRecord {
-  id          String   @id @db.Uuid
-  projectId   String   @map("project_id") @db.Uuid
-  workItemId  String   @map("work_item_id") @db.Uuid
-  artifactId  String?  @map("artifact_id") @db.Uuid
-  claim       String
-  sourceType  String   @map("source_type")
-  sourceRef   String   @map("source_ref")
-  currentness String   @default("CURRENT")
-  observedAt  DateTime @map("observed_at")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id            String   @id @db.Uuid
+  projectId     String   @map("project_id") @db.Uuid
+  runId         String   @map("run_id")
+  workItemId    String   @map("work_item_id") @db.Uuid
+  attemptId     String?  @map("attempt_id") @db.Uuid
+  approvalId    String?  @map("approval_id") @db.Uuid
+  agentId       String?  @map("agent_id")
+  artifactId    String?  @map("artifact_id") @db.Uuid
+  claim         String
+  sourceType    String   @map("source_type")
+  sourceRef     String   @map("source_ref")
+  scmCommitSha  String?  @map("scm_commit_sha")
+  deploymentUri String?  @map("deployment_uri")
+  currentness   String   @default("CURRENT")
+  digest        String?  @map("digest")
+  observedAt    DateTime @map("observed_at")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   @@index([projectId, workItemId, currentness])
+  @@index([projectId, runId])
+  @@index([projectId, attemptId])
   @@index([artifactId])
+  @@index([approvalId])
   @@map("evidence_records")
 }
 
 model VerificationRecord {
-  id               String   @id @db.Uuid
-  projectId        String   @map("project_id") @db.Uuid
-  workItemId       String   @map("work_item_id") @db.Uuid
-  verificationType String   @map("verification_type")
-  status           String
-  evidenceIds      Json     @map("evidence_ids")
-  verifierRef      String   @map("verifier_ref")
-  verifiedAt       DateTime @map("verified_at")
-  createdAt        DateTime @default(now()) @map("created_at")
+  id                   String   @id @db.Uuid
+  projectId            String   @map("project_id") @db.Uuid
+  runId                String   @map("run_id")
+  workItemId           String   @map("work_item_id") @db.Uuid
+  attemptId            String?  @map("attempt_id") @db.Uuid
+  verificationType     String   @map("verification_type")
+  status               String
+  evidenceIds          Json     @map("evidence_ids")
+  verifierRef          String   @map("verifier_ref")
+  completionDecisionId String?  @map("completion_decision_id") @db.Uuid
+  digest               String?  @map("digest")
+  verifiedAt           DateTime @map("verified_at")
+  createdAt            DateTime @default(now()) @map("created_at")
 
   @@index([projectId, workItemId, status])
+  @@index([projectId, runId])
+  @@index([completionDecisionId])
   @@map("verification_records")
 }
 

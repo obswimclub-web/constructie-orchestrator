@@ -278,6 +278,9 @@ importers:
       '@co/domain':
         specifier: workspace:*
         version: link:../domain
+      '@co/evidence':
+        specifier: workspace:*
+        version: link:../evidence
       '@co/policy':
         specifier: workspace:*
         version: link:../policy
