@@ -1,4 +1,15 @@
 import express from 'express';
+
+import { Request } from 'express';
+export interface AuthContext {
+  actorType: 'SERVICE' | 'USER';
+  role: 'AGENT' | 'OWNER';
+  projectId: string;
+}
+export interface AuthRequest extends Request {
+  authContext: AuthContext;
+}
+
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { PrismaClient } from '@prisma/client';
@@ -122,7 +133,7 @@ app.use((req, res, next) => {
         const expBuf = Buffer.from(expected, 'utf8');
         
         if (sigBuf.length === expBuf.length && timingSafeEqual(sigBuf, expBuf)) {
-          (req as any).authContext = { actorType: 'SERVICE', role: 'AGENT', projectId };
+          (req as unknown as AuthRequest).authContext = { actorType: 'SERVICE', role: 'AGENT', projectId };
           return next();
         }
       } catch {
@@ -160,7 +171,7 @@ app.use((req, res, next) => {
           if (!projectId && req.path !== '/api/projects') {
             return res.status(403).json({ error: 'Project context required' });
           }
-          (req as any).authContext = { actorType: 'USER', role: 'OWNER', projectId };
+          (req as unknown as AuthRequest).authContext = { actorType: 'USER', role: 'OWNER', projectId };
           return next();
         }
       }
@@ -178,7 +189,7 @@ app.use((req, res, next) => {
 
 app.post('/api/projects', async (req, res) => {
   try {
-    const authContext = (req as any).authContext;
+    const authContext = (req as unknown as AuthRequest).authContext;
     let authProjectId = authContext.projectId;
     
     if (authContext.role !== 'OWNER') {
@@ -249,7 +260,7 @@ app.post('/api/projects', async (req, res) => {
 
 app.get('/api/projects', async (req, res) => {
   try {
-    const authProjectId = (req as any).authContext.projectId;
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
     const projects = await prisma.project.findMany({ where: { id: authProjectId } });
     const dtos: ProjectDto[] = projects.map(p => ({
       ...p,
@@ -267,34 +278,18 @@ app.get('/api/projects', async (req, res) => {
 
 app.post('/api/work-items', async (req, res) => {
   try {
-    const authProjectId = (req as any).authContext.projectId;
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
     if (!authProjectId) return res.status(403).json({ error: 'Project context required' });
 
     const { objective, type } = req.body;
     if (!objective) return res.status(400).json({ error: 'objective required' });
 
-    const id = require('crypto').randomUUID();
+    const id = randomUUID();
     const now = new Date();
 
     const { createWorkItem } = await import('@co/domain');
     const workItem = createWorkItem({ id, projectId: authProjectId, parentId: null, objective, type: type || 'TASK', now });
     
-    const event = {
-      id: require('crypto').randomUUID(),
-      projectId: authProjectId,
-      eventType: 'WORK_ITEM_CREATED',
-      aggregateType: 'WORK_ITEM' as const,
-      aggregateId: id,
-      aggregateRevision: 1,
-      actorType: 'OWNER' as const,
-      actorId: 'owner-session',
-      correlationId: require('crypto').randomUUID(),
-      causationId: null,
-      schemaVersion: 1,
-      payload: { objective, type: type || 'TASK' },
-      occurredAt: now,
-    };
-
     const { WorkStore } = await import('@co/persistence');
     const store = new WorkStore(prisma);
     const created = await store.createWorkItem(workItem);
@@ -313,7 +308,7 @@ app.post('/api/work-items', async (req, res) => {
 
 app.get('/api/work-items', async (req, res) => {
   try {
-    const authProjectId = (req as any).authContext.projectId;
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
     const items = await prisma.workItem.findMany({ where: { projectId: authProjectId } });
     const dtos: WorkItemDto[] = items.map(i => ({
       ...i,
@@ -330,7 +325,7 @@ app.get('/api/work-items', async (req, res) => {
 
 app.get('/api/attempts', async (req, res) => {
   try {
-    const authProjectId = (req as any).authContext.projectId;
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
     const attempts = await prisma.attempt.findMany({ where: { projectId: authProjectId } });
     const dtos: AttemptDto[] = attempts.map(a => ({
       ...a,
@@ -349,7 +344,7 @@ app.get('/api/attempts', async (req, res) => {
 
 app.get('/api/evidence', async (req, res) => {
   try {
-    const authProjectId = (req as any).authContext.projectId;
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
     const evidence = await prisma.evidenceRecord.findMany({ where: { projectId: authProjectId } });
     const dtos: EvidenceRecordDto[] = evidence.map(e => ({
       ...e,
@@ -493,7 +488,7 @@ app.get('/api/approvals', async (req, res) => {
 // Get single approval
 app.get('/api/approvals/:id', async (req, res) => {
   try {
-    const authProjectId = (req as any).authContext.projectId;
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
     const approval = await prisma.approval.findFirst({ where: { id: req.params.id, projectId: authProjectId } });
     if (!approval) return res.status(404).json({ error: 'Approval not found' });
     res.json(mapApprovalToDto(approval));
@@ -506,7 +501,7 @@ app.get('/api/approvals/:id', async (req, res) => {
 app.post('/api/approvals', async (req, res) => {
   try {
     const body = req.body as CreateApprovalDto;
-    const authProjectId = (req as any).authContext.projectId;
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
     if (body.projectId !== authProjectId) { return res.status(403).json({ error: 'Project scope mismatch' }); }
     if (!body.projectId || !body.gateKind || !body.scope) {
       return res.status(400).json({ error: 'projectId, gateKind, and scope are required' });
@@ -565,7 +560,7 @@ app.post('/api/approvals/:id/decide', async (req, res) => {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const authProjectId = (req as any).authContext.projectId;
+      const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
       const approval = await tx.approval.findFirst({ where: { id, projectId: authProjectId } });
       if (!approval) return { outcome: 'NOT_FOUND', approval: null };
 
@@ -634,7 +629,7 @@ app.post('/api/approvals/:id/consume', async (req, res) => {
     
     // Everything inside a single transaction
     const result = await prisma.$transaction(async (tx) => {
-      const authProjectId = (req as any).authContext.projectId;
+      const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
       const approval = await tx.approval.findFirst({ where: { id, projectId: authProjectId } });
       if (!approval) return { outcome: 'NOT_FOUND', approval: null };
 
@@ -732,7 +727,7 @@ app.post('/api/approvals/:id/consume', async (req, res) => {
 app.post('/api/approvals/:id/verify', async (req, res) => {
   try {
     const { id } = req.params;
-    const authProjectId = (req as any).authContext.projectId;
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
     const approval = await prisma.approval.findFirst({ where: { id, projectId: authProjectId } });
     if (!approval) return res.status(404).json({ error: 'Approval not found' });
     if (approval.status !== 'USED') {
@@ -766,7 +761,7 @@ app.get('/api/audit-logs', async (req, res) => {
     const cursor = req.query.cursor as string | undefined;
     const attemptId = req.query.attemptId as string | undefined;
 
-    const authProjectId = (req as any).authContext.projectId;
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
     const whereClause: import('@prisma/client').Prisma.ProjectEventWhereInput = {
       projectId: authProjectId,
       eventType: {

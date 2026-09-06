@@ -17,20 +17,19 @@ vi.mock('../../data/hooks', () => ({
 }));
 
 describe('ProjectsPage Entry Flow', () => {
-  let mutateMock: any;
+  let mutateMock: import('vitest').Mock;
 
   afterEach(() => { cleanup(); });
   beforeEach(() => {
     vi.clearAllMocks();
     mutateMock = vi.fn();
-    (hooks.useFetch as any).mockReturnValue({
+    vi.mocked(hooks.useFetch).mockReturnValue({
       data: [],
       loading: false,
       error: null,
       isStale: false,
       isDegraded: false,
-      refetch: mutateMock,
-    });
+      refetch: mutateMock, mutate: vi.fn(), });
   });
 
   it('New Project control opens real form and validation blocks invalid submit', async () => {
@@ -59,7 +58,7 @@ describe('ProjectsPage Entry Flow', () => {
     fireEvent.change(inputs[0], { target: { value: 'My Project' } });
     fireEvent.change(inputs[1], { target: { value: 'my/repo' } });
 
-    (api.createProject as any).mockResolvedValueOnce({});
+    vi.mocked(api.createProject).mockResolvedValueOnce({} as unknown as Awaited<ReturnType<typeof api.createProject>>);
 
     const submitBtn = screen.getByText('Create Project');
     fireEvent.click(submitBtn);
@@ -83,7 +82,7 @@ describe('ProjectsPage Entry Flow', () => {
     fireEvent.change(inputs[0], { target: { value: 'My Project' } });
     fireEvent.change(inputs[1], { target: { value: 'my/repo' } });
 
-    (api.createProject as any).mockRejectedValueOnce(new Error('Network error'));
+    vi.mocked(api.createProject).mockRejectedValueOnce(new Error('Network error'));
 
     fireEvent.click(screen.getByText('Create Project'));
 

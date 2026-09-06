@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import App from './App';
 import { MemoryRouter } from 'react-router-dom';
 import * as api from './data/api';

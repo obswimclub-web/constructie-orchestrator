@@ -44,8 +44,8 @@ describe('P12 Entry Flow API', () => {
     const expiredPayload = { version: 1, role: 'OWNER', projectId: null, issuedAt: Date.now() - 100000, expiresAt: Date.now() - 50000 };
     
     // Quick trick: we can sign a cookie ourselves since we know the secret and format
-    const cookieSignature = require('cookie-signature');
-    const signed = 's:' + cookieSignature.sign(JSON.stringify(expiredPayload), 'test-session-secret');
+    const signCookie = (val: string, secret: string) => val + '.' + createHmac('sha256', secret).update(val).digest('base64').replace(/=+$/, '');
+    const signed = 's:' + signCookie(JSON.stringify(expiredPayload), 'test-session-secret');
     const expiredCookie = 'co_session=' + encodeURIComponent(signed);
 
     const res = await request(app).post('/api/projects').set('Cookie', expiredCookie).send({ name: 'T', slug: 't' });

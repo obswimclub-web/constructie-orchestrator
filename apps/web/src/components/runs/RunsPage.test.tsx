@@ -15,20 +15,19 @@ vi.mock('../../data/hooks', () => ({
 }));
 
 describe('RunsPage Entry Flow', () => {
-  let mutateMock: any;
+  let mutateMock: import('vitest').Mock;
 
   afterEach(() => { cleanup(); });
   beforeEach(() => {
     vi.clearAllMocks();
     mutateMock = vi.fn();
-    (hooks.useFetch as any).mockReturnValue({
+    vi.mocked(hooks.useFetch).mockReturnValue({
       data: [],
       loading: false,
       error: null,
       isStale: false,
       isDegraded: false,
-      refetch: mutateMock,
-    });
+      refetch: mutateMock, mutate: vi.fn(), });
   });
 
   it('Start New Run opens real form and validation blocks invalid submit', async () => {
@@ -51,7 +50,7 @@ describe('RunsPage Entry Flow', () => {
     const input = screen.getByRole('textbox');
     fireEvent.change(input, { target: { value: 'Fix bug' } });
 
-    (api.createWorkItem as any).mockResolvedValueOnce({});
+    vi.mocked(api.createWorkItem).mockResolvedValueOnce({} as unknown as Awaited<ReturnType<typeof api.createWorkItem>>);
 
     fireEvent.click(screen.getByText('Start Run'));
 
@@ -72,7 +71,7 @@ describe('RunsPage Entry Flow', () => {
     const input = screen.getByRole('textbox');
     fireEvent.change(input, { target: { value: 'Fix bug' } });
 
-    (api.createWorkItem as any).mockRejectedValueOnce(new Error('Network error'));
+    vi.mocked(api.createWorkItem).mockRejectedValueOnce(new Error('Network error'));
 
     fireEvent.click(screen.getByText('Start Run'));
 
