@@ -3,8 +3,53 @@ import { Project, WorkItem, Approval, EvidenceEvent, RunStatus } from '../types'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001';
 
+
+
+
+export async function checkSession(): Promise<{ authenticated: boolean; projectBound: boolean }> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/session`, { credentials: 'include' });
+    if (!res.ok) return { authenticated: false, projectBound: false };
+    return await res.json();
+  } catch {
+    return { authenticated: false, projectBound: false };
+  }
+}
+
+export async function loginWithBootstrap(bootstrapKey: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bootstrapKey }),
+    credentials: 'include'
+  });
+  if (!res.ok) throw new Error('Invalid bootstrap key');
+}
+
+export async function logoutOwner(): Promise<void> {
+  await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST', credentials: 'include' });
+}
+
+async function authenticatedFetch(url: string, options?: RequestInit): Promise<Response> {
+  const res = await fetch(url, {
+    ...options,
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options?.headers || {})
+    }
+  });
+  if (res.status === 401) {
+    window.dispatchEvent(new Event('co-auth-unauthorized'));
+  }
+  return res;
+}
+
+
+
+
 export async function fetchProjects(): Promise<Project[]> {
-  const res = await fetch(`${API_BASE}/api/projects`);
+  const res = await authenticatedFetch(`${API_BASE}/api/projects`);
   if (!res.ok) throw new Error('Failed to fetch projects');
   const dtos: ProjectDto[] = await res.json();
 
@@ -35,7 +80,7 @@ function mapLifecycleStateToRunStatus(state: string): RunStatus {
 }
 
 export async function fetchWorkItems(): Promise<WorkItem[]> {
-  const res = await fetch(`${API_BASE}/api/work-items`);
+  const res = await authenticatedFetch(`${API_BASE}/api/work-items`);
   if (!res.ok) throw new Error('Failed to fetch work items');
   const dtos: WorkItemDto[] = await res.json();
 
@@ -48,13 +93,13 @@ export async function fetchWorkItems(): Promise<WorkItem[]> {
 }
 
 export async function fetchAttempts(): Promise<AttemptDto[]> {
-  const res = await fetch(`${API_BASE}/api/attempts`);
+  const res = await authenticatedFetch(`${API_BASE}/api/attempts`);
   if (!res.ok) throw new Error('Failed to fetch attempts');
   return res.json();
 }
 
 export async function fetchEvidence(): Promise<EvidenceEvent[]> {
-  const res = await fetch(`${API_BASE}/api/evidence`);
+  const res = await authenticatedFetch(`${API_BASE}/api/evidence`);
   if (!res.ok) throw new Error('Failed to fetch evidence');
   const dtos: EvidenceRecordDto[] = await res.json();
 
@@ -89,23 +134,23 @@ function mapApprovalDtoToFrontend(dto: ApprovalDto): Approval {
 }
 
 export async function fetchApprovals(status = 'PENDING'): Promise<Approval[]> {
-  const res = await fetch(`${API_BASE}/api/approvals?status=${status}`);
+  const res = await authenticatedFetch(`${API_BASE}/api/approvals?status=${status}`);
   if (!res.ok) throw new Error('Failed to fetch approvals');
   const dtos: ApprovalDto[] = await res.json();
   return dtos.map(mapApprovalDtoToFrontend);
 }
 
 export async function fetchApproval(id: string): Promise<Approval> {
-  const res = await fetch(`${API_BASE}/api/approvals/${id}`);
+  const res = await authenticatedFetch(`${API_BASE}/api/approvals/${id}`);
   if (!res.ok) throw new Error('Failed to fetch approval');
   const dto: ApprovalDto = await res.json();
   return mapApprovalDtoToFrontend(dto);
 }
 
 export async function createApproval(payload: CreateApprovalDto): Promise<Approval> {
-  const res = await fetch(`${API_BASE}/api/approvals`, {
+  const res = await authenticatedFetch(`${API_BASE}/api/approvals`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error('Failed to create approval');
@@ -120,9 +165,9 @@ export async function decideApproval(
   decidedBy?: string
 ): Promise<Approval> {
   const body: ApprovalDecisionDto = { decision, rationale, decidedBy };
-  const res = await fetch(`${API_BASE}/api/approvals/${id}/decide`, {
+  const res = await authenticatedFetch(`${API_BASE}/api/approvals/${id}/decide`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -134,9 +179,9 @@ export async function decideApproval(
 }
 
 export async function consumeApproval(id: string, payload: ApprovalConsumeDto): Promise<Approval> {
-  const res = await fetch(`${API_BASE}/api/approvals/${id}/consume`, {
+  const res = await authenticatedFetch(`${API_BASE}/api/approvals/${id}/consume`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
@@ -183,7 +228,7 @@ export async function fetchIncidents(): Promise<Incident[]> {
 }
 
 export async function fetchLogs(): Promise<Log[]> {
-  const res = await fetch(`${API_BASE}/api/audit-logs`);
+  const res = await authenticatedFetch(`${API_BASE}/api/audit-logs`);
   if (!res.ok) throw new Error('Failed to fetch logs');
   const data = await res.json();
   if (!data || !data.items) return [];
@@ -201,9 +246,22 @@ export async function fetchFindings(): Promise<Finding[]> {
   return [];
 }
 
+
 export async function fetchRunDetails(): Promise<RunDetail[]> {
-  return [];
+  const items = await fetchWorkItems().catch(() => []);
+  return items.map(item => ({
+    id: item.id,
+    title: item.title,
+    startedAt: new Date(item.startedAt).toLocaleString(),
+    status: item.status,
+    currentAgent: 'Orchestrator',
+    reviewer: 'Pending',
+    duration: '0s',
+    evidenceState: 'PENDING',
+    approvalState: 'PENDING'
+  }));
 }
+
 
 export async function fetchWorkspaceState(): Promise<WorkspaceState> {
   return {
@@ -216,4 +274,47 @@ export async function fetchWorkspaceState(): Promise<WorkspaceState> {
 
 export async function fetchTaskGraph(): Promise<GraphNode[]> {
   return [];
+}
+
+
+export async function createProject(name: string, slug: string): Promise<Project> {
+  const res = await authenticatedFetch(`${API_BASE}/api/projects`, {
+    method: 'POST',
+    
+    body: JSON.stringify({ name, slug })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to create project' }));
+    throw new Error(err.error || 'Failed to create project');
+  }
+  const dto = await res.json();
+  return {
+    id: dto.id,
+    name: dto.name,
+    status: dto.lifecycleState as Project['status'],
+    repository: dto.slug,
+    branch: 'main',
+    currentWorkPackage: null,
+    lastRun: dto.updatedAt,
+    health: 'HEALTHY',
+    openApprovals: 0,
+    openIncidents: 0,
+    qualificationState: 'UNKNOWN'
+  };
+}
+
+export async function createWorkItem(objective: string): Promise<WorkItem> {
+  const res = await authenticatedFetch(`${API_BASE}/api/work-items`, {
+    method: 'POST',
+    
+    body: JSON.stringify({ objective, type: 'TASK' })
+  });
+  if (!res.ok) throw new Error('Failed to create work item');
+  const dto = await res.json();
+  return {
+    id: dto.id,
+    title: dto.objective,
+    status: mapLifecycleStateToRunStatus(dto.lifecycleState),
+    startedAt: dto.createdAt
+  };
 }
