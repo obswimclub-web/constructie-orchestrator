@@ -1,5 +1,17 @@
 import express from 'express';
+
+import { Request } from 'express';
+export interface AuthContext {
+  actorType: 'SERVICE' | 'USER';
+  role: 'AGENT' | 'OWNER';
+  projectId: string;
+}
+export interface AuthRequest extends Request {
+  authContext: AuthContext;
+}
+
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { PrismaClient } from '@prisma/client';
 import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -24,53 +36,231 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 const app: express.Express = express();
-app.use(cors());
+app.use(cors({ origin: process.env.WEB_ORIGIN || 'http://localhost:5173', credentials: true }));
 app.use(express.json());
+app.use(cookieParser(process.env.SESSION_SECRET));
 
 // ─── Authentication Middleware ────────────────────────────────────────────────
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
+app.get('/api/auth/session', (req, res) => {
+  const sessionData = req.signedCookies['co_session'];
+  if (sessionData) {
+    try {
+      const payload = JSON.parse(sessionData);
+      const nowTime = Date.now();
+      if (
+        payload &&
+        payload.version === 1 &&
+        payload.role === 'OWNER' &&
+        payload.issuedAt <= nowTime &&
+        payload.expiresAt > nowTime &&
+        payload.expiresAt > payload.issuedAt &&
+        payload.expiresAt - payload.issuedAt <= 24 * 60 * 60 * 1000
+      ) {
+        return res.json({ authenticated: true, projectBound: !!payload.projectId });
+      }
+    } catch { /* ignore */ }
+  }
+  return res.json({ authenticated: false, projectBound: false });
+});
+
+
+
+app.post('/api/auth/login', (req, res) => {
+  const expectedKey = process.env.OWNER_BOOTSTRAP_KEY;
+  if (!expectedKey) return res.status(500).json({ error: 'Server authentication configuration missing' });
+  
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) return res.status(500).json({ error: 'Server authentication configuration missing' });
+
+  const { bootstrapKey } = req.body;
+  if (!bootstrapKey || typeof bootstrapKey !== 'string') {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const inputBuf = Buffer.from(bootstrapKey as string, 'utf8');
+  const expectedBuf = Buffer.from(expectedKey as string, 'utf8');
+  
+  if (inputBuf.length !== expectedBuf.length || !timingSafeEqual(inputBuf, expectedBuf)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const now = Date.now();
+  const expiresAt = now + 24 * 60 * 60 * 1000;
+  const payload = { version: 1, role: 'OWNER', projectId: null, issuedAt: now, expiresAt };
+  
+  res.cookie('co_session', JSON.stringify(payload), {
+    httpOnly: true,
+    signed: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/',
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  });
+
+  res.status(200).json({ status: 'ok' });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie('co_session', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/'
+  });
+  res.status(200).json({ status: 'ok' });
+});
+
 app.use((req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing or invalid Authorization header' });
-  }
-
-  const token = authHeader.substring(7);
-  const secret = process.env.API_SERVICE_TOKEN || '';
-  if (!secret) {
-    return res.status(401).json({ error: 'Server authentication not configured' });
-  }
-
-  const parts = token.split('.');
-  if (parts.length !== 2) {
-    return res.status(401).json({ error: 'Malformed token' });
-  }
-
-  const projectId = parts[0] as string;
-  const signature = parts[1] as string;
-  const hmac = createHmac('sha256', secret);
-  hmac.update(projectId);
-  const expected = hmac.digest('hex');
-
-  try {
-    if (timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
-      (req as unknown as express.Request & { authContext: { projectId: string } }).authContext = { projectId };
-      return next();
-    }
-  } catch {
-    // Buffer length mismatch or other crypto error
-  }
   
-  return res.status(401).json({ error: 'Invalid token signature' });
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    const secret = process.env.API_SERVICE_TOKEN;
+    if (!secret) return res.status(500).json({ error: 'Server authentication configuration missing' });
+
+    const parts = token.split('.');
+    if (parts.length === 2) {
+      const projectId = parts[0] as string;
+      const signature = parts[1] as string;
+      try {
+        const hmac = createHmac('sha256', secret);
+        hmac.update(projectId);
+        const expected = hmac.digest('hex');
+        
+        const sigBuf = Buffer.from(signature, 'utf8');
+        const expBuf = Buffer.from(expected, 'utf8');
+        
+        if (sigBuf.length === expBuf.length && timingSafeEqual(sigBuf, expBuf)) {
+          (req as unknown as AuthRequest).authContext = { actorType: 'SERVICE', role: 'AGENT', projectId };
+          return next();
+        }
+      } catch {
+        // crypto error
+      }
+    }
+  }
+
+  // Browser cookie fallback
+  const sessionSecret = process.env.SESSION_SECRET;
+  if (!sessionSecret) return res.status(500).json({ error: 'Server authentication configuration missing' });
+  
+  const sessionData = req.signedCookies['co_session'];
+  if (sessionData) {
+    try {
+      const payload = JSON.parse(sessionData);
+      
+      if (
+        payload &&
+        typeof payload === 'object' &&
+        payload.version === 1 &&
+        payload.role === 'OWNER' &&
+        typeof payload.issuedAt === 'number' &&
+        typeof payload.expiresAt === 'number' &&
+        (payload.projectId === null || typeof payload.projectId === 'string')
+      ) {
+        const nowTime = Date.now();
+        if (
+          payload.issuedAt <= nowTime && 
+          payload.expiresAt > nowTime && 
+          payload.expiresAt > payload.issuedAt && 
+          payload.expiresAt - payload.issuedAt <= 24 * 60 * 60 * 1000
+        ) {
+          const projectId = payload.projectId || null;
+          if (!projectId && req.path !== '/api/projects') {
+            return res.status(403).json({ error: 'Project context required' });
+          }
+          (req as unknown as AuthRequest).authContext = { actorType: 'USER', role: 'OWNER', projectId };
+          return next();
+        }
+      }
+    } catch {
+      // bad payload
+    }
+  }
+
+  return res.status(401).json({ error: 'Missing or invalid Authentication' });
 });
+
 
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
 
+app.post('/api/projects', async (req, res) => {
+  try {
+    const authContext = (req as unknown as AuthRequest).authContext;
+    let authProjectId = authContext.projectId;
+    
+    if (authContext.role !== 'OWNER') {
+      return res.status(403).json({ error: 'Only Owner can create projects' });
+    }
+
+    const { name, slug } = req.body;
+    if (!name || !slug) return res.status(400).json({ error: 'name and slug required' });
+    
+    if (authProjectId) {
+      const existing = await prisma.project.findUnique({ where: { id: authProjectId } });
+      if (existing) {
+        return res.status(409).json({ error: 'Project already exists for this context' });
+      }
+    } else {
+      authProjectId = randomUUID();
+    }
+
+    const now = new Date();
+    const { createProject } = await import('@co/domain');
+    const project = createProject({ id: authProjectId, slug, name, now });
+    
+    const event = {
+      id: randomUUID(),
+      projectId: authProjectId,
+      eventType: 'PROJECT_CREATED',
+      aggregateType: 'PROJECT' as const,
+      aggregateId: authProjectId,
+      aggregateRevision: 1,
+      actorType: 'OWNER' as const,
+      actorId: 'owner-session',
+      correlationId: randomUUID(),
+      causationId: null,
+      schemaVersion: 1,
+      payload: { name, slug },
+      occurredAt: now,
+    };
+
+    const { ProjectStore } = await import('@co/persistence');
+    const store = new ProjectStore(prisma);
+    const created = await store.create({ project, event });
+
+    if (!authContext.projectId) {
+      const now = Date.now();
+      const expiresAt = now + 24 * 60 * 60 * 1000;
+      const payload = { version: 1, role: 'OWNER', projectId: authProjectId, issuedAt: now, expiresAt };
+      res.cookie('co_session', JSON.stringify(payload), {
+        httpOnly: true,
+        signed: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/',
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      });
+    }
+
+    res.status(201).json({
+      ...created,
+      createdAt: created.createdAt.toISOString(),
+      updatedAt: created.updatedAt.toISOString(),
+    });
+  } catch (err) {
+    const { defaultRedactor } = await import('@co/observability');
+    console.error('[API Error]', defaultRedactor.redact(String(err)));
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 app.get('/api/projects', async (req, res) => {
   try {
-    const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
     const projects = await prisma.project.findMany({ where: { id: authProjectId } });
     const dtos: ProjectDto[] = projects.map(p => ({
       ...p,
@@ -85,9 +275,40 @@ app.get('/api/projects', async (req, res) => {
 
 // ─── Work Items ───────────────────────────────────────────────────────────────
 
+
+app.post('/api/work-items', async (req, res) => {
+  try {
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
+    if (!authProjectId) return res.status(403).json({ error: 'Project context required' });
+
+    const { objective, type } = req.body;
+    if (!objective) return res.status(400).json({ error: 'objective required' });
+
+    const id = randomUUID();
+    const now = new Date();
+
+    const { createWorkItem } = await import('@co/domain');
+    const workItem = createWorkItem({ id, projectId: authProjectId, parentId: null, objective, type: type || 'TASK', now });
+    
+    const { WorkStore } = await import('@co/persistence');
+    const store = new WorkStore(prisma);
+    const created = await store.createWorkItem(workItem);
+
+    res.status(201).json({
+      ...created,
+      createdAt: created.createdAt.toISOString(),
+      updatedAt: created.updatedAt.toISOString(),
+    });
+  } catch (err) {
+    const { defaultRedactor } = await import('@co/observability');
+    console.error('[API Error]', defaultRedactor.redact(String(err)));
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 app.get('/api/work-items', async (req, res) => {
   try {
-    const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
     const items = await prisma.workItem.findMany({ where: { projectId: authProjectId } });
     const dtos: WorkItemDto[] = items.map(i => ({
       ...i,
@@ -104,7 +325,7 @@ app.get('/api/work-items', async (req, res) => {
 
 app.get('/api/attempts', async (req, res) => {
   try {
-    const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
     const attempts = await prisma.attempt.findMany({ where: { projectId: authProjectId } });
     const dtos: AttemptDto[] = attempts.map(a => ({
       ...a,
@@ -123,7 +344,7 @@ app.get('/api/attempts', async (req, res) => {
 
 app.get('/api/evidence', async (req, res) => {
   try {
-    const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
     const evidence = await prisma.evidenceRecord.findMany({ where: { projectId: authProjectId } });
     const dtos: EvidenceRecordDto[] = evidence.map(e => ({
       ...e,
@@ -267,7 +488,7 @@ app.get('/api/approvals', async (req, res) => {
 // Get single approval
 app.get('/api/approvals/:id', async (req, res) => {
   try {
-    const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
     const approval = await prisma.approval.findFirst({ where: { id: req.params.id, projectId: authProjectId } });
     if (!approval) return res.status(404).json({ error: 'Approval not found' });
     res.json(mapApprovalToDto(approval));
@@ -280,7 +501,7 @@ app.get('/api/approvals/:id', async (req, res) => {
 app.post('/api/approvals', async (req, res) => {
   try {
     const body = req.body as CreateApprovalDto;
-    const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
     if (body.projectId !== authProjectId) { return res.status(403).json({ error: 'Project scope mismatch' }); }
     if (!body.projectId || !body.gateKind || !body.scope) {
       return res.status(400).json({ error: 'projectId, gateKind, and scope are required' });
@@ -339,7 +560,7 @@ app.post('/api/approvals/:id/decide', async (req, res) => {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+      const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
       const approval = await tx.approval.findFirst({ where: { id, projectId: authProjectId } });
       if (!approval) return { outcome: 'NOT_FOUND', approval: null };
 
@@ -408,7 +629,7 @@ app.post('/api/approvals/:id/consume', async (req, res) => {
     
     // Everything inside a single transaction
     const result = await prisma.$transaction(async (tx) => {
-      const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+      const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
       const approval = await tx.approval.findFirst({ where: { id, projectId: authProjectId } });
       if (!approval) return { outcome: 'NOT_FOUND', approval: null };
 
@@ -506,7 +727,7 @@ app.post('/api/approvals/:id/consume', async (req, res) => {
 app.post('/api/approvals/:id/verify', async (req, res) => {
   try {
     const { id } = req.params;
-    const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
     const approval = await prisma.approval.findFirst({ where: { id, projectId: authProjectId } });
     if (!approval) return res.status(404).json({ error: 'Approval not found' });
     if (approval.status !== 'USED') {
@@ -540,7 +761,7 @@ app.get('/api/audit-logs', async (req, res) => {
     const cursor = req.query.cursor as string | undefined;
     const attemptId = req.query.attemptId as string | undefined;
 
-    const authProjectId = (req as unknown as express.Request & { authContext: { projectId: string } }).authContext.projectId;
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
     const whereClause: import('@prisma/client').Prisma.ProjectEventWhereInput = {
       projectId: authProjectId,
       eventType: {

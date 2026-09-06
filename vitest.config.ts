@@ -5,5 +5,6 @@ export default defineConfig({
     // Serialize all test files to prevent Postgres integration tests from
     // colliding on shared database state during parallel truncation.
     fileParallelism: false,
+    setupFiles: ['./tests/setup.ts'],
   },
 });

@@ -4,7 +4,6 @@ import { app, tryExpireApproval } from '../../apps/api/src/index';
 import { PrismaClient } from '@prisma/client';
 import { randomUUID, createHmac } from 'crypto';
 const SECRET = 'test-secret';
-process.env.API_SERVICE_TOKEN = SECRET;
 
 function generateToken(projId) {
   const hmac = createHmac('sha256', SECRET);

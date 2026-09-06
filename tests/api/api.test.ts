@@ -11,7 +11,6 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 const SECRET = 'test-secret';
-process.env.API_SERVICE_TOKEN = SECRET;
 
 function generateToken(projectId: string) {
   const hmac = createHmac('sha256', SECRET);
