@@ -69,6 +69,7 @@ export const ArtifactRefSchema = z.object({
 export type ArtifactRef = z.infer<typeof ArtifactRefSchema>;
 
 export const EvidenceRefSchema = z.object({
+  evidenceId: z.string().uuid(),
   type: z.string(),
   claimSupported: z.string(),
   sourceRef: z.string(),

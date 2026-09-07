@@ -1,0 +1,1 @@
+ALTER TABLE "work_items" ADD COLUMN IF NOT EXISTS "evidence_requirements" JSONB NOT NULL DEFAULT '["AGENT_RESULT_VERIFICATION"]'::jsonb;

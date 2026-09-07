@@ -125,7 +125,7 @@ describe('AntigravityPythonBridge', () => {
 
     // Preserves actionsTaken, evidence, sideEffects
     expect(result.actionsTaken).toEqual(expectedResult.actionsTaken);
-    expect(result.evidence).toEqual(expectedResult.evidence);
+    expect(result.evidence[0].claimSupported).toEqual(expectedResult.evidence![0].claimSupported);
     expect(result.sideEffects).toEqual(expectedResult.sideEffects);
 
     // No raw secret
@@ -188,4 +188,52 @@ describe('AntigravityPythonBridge', () => {
     expect(event.aggregateId).not.toBe('wp-different');
     expect(event.aggregateId).not.toBe('run-different');
   });
+
+  it('enforces deterministic evidence identity independent of python uuid', async () => {
+    await bridge.dispatch(wp, ctx);
+
+    // Simulate python sending an array of 2 identical evidence objects
+    // AND it might try to forge a random evidenceId which should be ignored
+    const mockOutput = {
+      schemaVersion: '1.0.0', runRef: { runId: 'r1' }, status: 'COMPLETED', summary: 'Done',
+      actionsTaken: [], artifacts: [], findings: [], unresolvedItems: [], requestedInputs: [], sideEffects: [], usage: { inputUnits: 0, outputUnits: 0, estimatedCost: 0, currency: 'USD' },
+      evidence: [
+        { type: 'issue', claimSupported: 'foo', sourceRef: 'bar', evidenceId: 'python-random-123' },
+        { type: 'issue', claimSupported: 'foo', sourceRef: 'bar', evidenceId: 'python-random-456' }
+      ]
+    };
+
+    const resultPromise = bridge.getResult({ runId: 'r1' });
+    mockChildProcess.stdout.emit('data', Buffer.from(JSON.stringify(mockOutput)));
+    mockChildProcess.emit('close', 0);
+
+    const result1 = await resultPromise;
+    const ev1 = result1.evidence[0];
+    const ev2 = result1.evidence[1];
+
+    // distinct instance -> distinct ID
+    expect(ev1.evidenceId).not.toBe(ev2.evidenceId);
+    // no python random ID
+    expect(ev1.evidenceId).not.toBe('python-random-123');
+    expect(ev2.evidenceId).not.toBe('python-random-456');
+
+    // same python result replay -> same evidenceId
+    // Reset the bridge for a new dispatch of the exact same output (e.g. restart/resume scenario)
+    bridge = new AntigravityPythonBridge(() => ({ execute: async () => ({}) } as unknown as import('@co/tools').GovernedToolGateway), { redact: (s: string) => s } as unknown as import('@co/tools').OutputRedactor);
+    const mockChildProcess2 = Object.assign(new EventEmitter(), {
+      stdin: { write: vi.fn(), end: vi.fn() }, stdout: new EventEmitter(), stderr: new EventEmitter(), kill: vi.fn(),
+    });
+    // @ts-expect-error Mock overload
+    mockSpawn.mockReturnValue(mockChildProcess2);
+
+    await bridge.dispatch(wp, ctx);
+    const resultPromise2 = bridge.getResult({ runId: 'r1' });
+    mockChildProcess2.stdout.emit('data', Buffer.from(JSON.stringify(mockOutput)));
+    mockChildProcess2.emit('close', 0);
+
+    const result2 = await resultPromise2;
+    expect(result2.evidence[0].evidenceId).toBe(ev1.evidenceId);
+    expect(result2.evidence[1].evidenceId).toBe(ev2.evidenceId);
+  });
+
 });

@@ -1,3 +1,10 @@
+import crypto from 'node:crypto';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function __evId(base: string, type: string, sourceRef: string, claim: any, index: number = 0): string {
+  const hash = crypto.createHash('sha256').update(base + ':' + String(type) + ':' + String(sourceRef) + ':' + String(claim) + ':' + index).digest('hex').slice(0, 32);
+  return hash.slice(0, 8) + '-' + hash.slice(8, 12) + '-4' + hash.slice(13, 16) + '-8' + hash.slice(17, 20) + '-' + hash.slice(20, 32);
+}
 /* eslint-disable */
 import { randomUUID } from 'node:crypto';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -101,7 +108,7 @@ export class GeminiAdapter implements AgentAdapter {
         evidence: [
           {
             type: 'error',
-            claimSupported: 'Missing API Key',
+            evidenceId: __evId(runId, 'error', 'GeminiAdapter', 'Missing API Key'), claimSupported: 'Missing API Key',
             sourceRef: 'GeminiAdapter',
           },
         ],
@@ -121,7 +128,7 @@ export class GeminiAdapter implements AgentAdapter {
           status: 'FAILED',
           evidence: [
             ...(this.runs.get(runId)?.evidence ?? []),
-            { type: 'error', claimSupported: 'Timeout', sourceRef: 'GeminiAdapter' },
+            { type: 'error', evidenceId: __evId(runId, 'error', 'GeminiAdapter', 'Timeout'), claimSupported: 'Timeout', sourceRef: 'GeminiAdapter' },
           ],
         });
       }, runtimeContext.timeBudgetMs);
@@ -171,7 +178,7 @@ export class GeminiAdapter implements AgentAdapter {
           this.updateState(runId, {
             status: 'FAILED',
             evidence: [
-              { type: 'malformed_output', claimSupported: `Parse error: ${parseErr.message}`, sourceRef: 'GeminiAdapter' },
+              { type: 'malformed_output', evidenceId: __evId(runId, 'malformed_output', 'GeminiAdapter', `Parse error: ${parseErr.message}`), claimSupported: `Parse error: ${parseErr.message}`, sourceRef: 'GeminiAdapter' },
             ],
           });
           return;
@@ -185,7 +192,7 @@ export class GeminiAdapter implements AgentAdapter {
           this.updateState(runId, {
             status: 'FAILED',
             evidence: [
-              { type: 'malformed_output', claimSupported: 'Model returned malformed JSON without valid code block', sourceRef: 'GeminiAdapter' },
+              { type: 'malformed_output', evidenceId: __evId(runId, 'malformed_output', 'GeminiAdapter', 'Model returned malformed JSON without valid code block'), claimSupported: 'Model returned malformed JSON without valid code block', sourceRef: 'GeminiAdapter' },
             ],
           });
           return;
@@ -217,7 +224,7 @@ export class GeminiAdapter implements AgentAdapter {
             runStatus = 'FAILED';
             denialEvidence.push({
               type: 'tool_denial',
-              claimSupported: result.summary,
+              evidenceId: __evId(runId, 'tool_denial', toolRequest.requestId, result.summary), claimSupported: result.summary,
               sourceRef: toolRequest.requestId,
             });
           } else if (result.status === 'FAILED' || result.status === 'TIMED_OUT' || result.status === 'UNKNOWN') {
@@ -250,7 +257,7 @@ export class GeminiAdapter implements AgentAdapter {
           evidence: [
             {
               type: 'model',
-              claimSupported: response.model ?? 'gemini',
+              evidenceId: __evId(runId, 'model', response.id ?? randomUUID(), response.model ?? 'gemini'), claimSupported: response.model ?? 'gemini',
               sourceRef: response.id ?? randomUUID(),
             },
             ...denialEvidence,
@@ -271,7 +278,7 @@ export class GeminiAdapter implements AgentAdapter {
         if (status === 429) {
           retryEvidence.push({
             type: 'retry',
-            claimSupported: `Rate limited (429) on attempt ${attempt + 1}`,
+            evidenceId: __evId(runId, 'retry', 'GeminiAdapter', `Rate limited (429) on attempt ${attempt + 1}`), claimSupported: `Rate limited (429) on attempt ${attempt + 1}`,
             sourceRef: 'GeminiAdapter',
           });
           if (attempt < MAX_RETRIES - 1) {
@@ -286,7 +293,7 @@ export class GeminiAdapter implements AgentAdapter {
         } else if (status >= 500) {
           retryEvidence.push({
             type: 'retry',
-            claimSupported: `Server error (${status}) on attempt ${attempt + 1}`,
+            evidenceId: __evId(runId, 'retry', 'GeminiAdapter', `Server error (${status}) on attempt ${attempt + 1}`), claimSupported: `Server error (${status}) on attempt ${attempt + 1}`,
             sourceRef: 'GeminiAdapter',
           });
           if (attempt < MAX_RETRIES - 1) {

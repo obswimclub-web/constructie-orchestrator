@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+import uuid
 import json
 import asyncio
 import signal

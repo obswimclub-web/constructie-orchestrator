@@ -42,6 +42,7 @@ export interface WorkItem {
   readonly objective: string;
   readonly lifecycleState: WorkItemLifecycleState;
   readonly revision: number;
+  readonly evidenceRequirements: string[];
   readonly currentAttemptId: string | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -119,7 +120,7 @@ export function isActiveAttemptState(state: AttemptState): boolean {
   return ACTIVE_ATTEMPT_STATES.includes(state);
 }
 
-export function createWorkItem(input: Omit<WorkItem, "lifecycleState" | "revision" | "currentAttemptId" | "createdAt" | "updatedAt"> & { now: Date }): WorkItem {
+export function createWorkItem(input: Omit<WorkItem, "lifecycleState" | "evidenceRequirements" | "revision" | "currentAttemptId" | "createdAt" | "updatedAt"> & { now: Date, evidenceRequirements?: string[] }): WorkItem {
   return {
     id: input.id,
     projectId: input.projectId,
@@ -131,5 +132,6 @@ export function createWorkItem(input: Omit<WorkItem, "lifecycleState" | "revisio
     currentAttemptId: null,
     createdAt: input.now,
     updatedAt: input.now,
+    evidenceRequirements: input.evidenceRequirements || ['AGENT_RESULT_VERIFICATION'],
   };
 }

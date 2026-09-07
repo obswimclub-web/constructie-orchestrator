@@ -8,7 +8,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001';
 
 export async function checkSession(): Promise<{ authenticated: boolean; projectBound: boolean }> {
   try {
-    const res = await fetch(`${API_BASE}/auth/session`, { credentials: 'include' });
+    const res = await fetch(`${API_BASE}/api/auth/session`, { credentials: 'include' });
     if (!res.ok) return { authenticated: false, projectBound: false };
     return await res.json();
   } catch {

@@ -1,3 +1,10 @@
+import crypto from 'node:crypto';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function __evId(base: string, type: string, sourceRef: string, claim: any, index: number = 0): string {
+  const hash = crypto.createHash('sha256').update(base + ':' + String(type) + ':' + String(sourceRef) + ':' + String(claim) + ':' + index).digest('hex').slice(0, 32);
+  return hash.slice(0, 8) + '-' + hash.slice(8, 12) + '-4' + hash.slice(13, 16) + '-8' + hash.slice(17, 20) + '-' + hash.slice(20, 32);
+}
 /* eslint-disable */
 import { randomUUID } from 'node:crypto';
 import OpenAI from 'openai';
@@ -100,7 +107,7 @@ export class CodexAdapter implements AgentAdapter {
         evidence: [
           {
             type: 'error',
-            claimSupported: 'Missing API Key',
+            evidenceId: __evId(runId, 'error', 'CodexAdapter', 'Missing API Key'), claimSupported: 'Missing API Key',
             sourceRef: 'CodexAdapter',
           },
         ],
@@ -120,7 +127,7 @@ export class CodexAdapter implements AgentAdapter {
           status: 'FAILED',
           evidence: [
             ...(this.runs.get(runId)?.evidence ?? []),
-            { type: 'error', claimSupported: 'Timeout', sourceRef: 'CodexAdapter' },
+            { type: 'error', evidenceId: __evId(runId, 'error', 'CodexAdapter', 'Timeout'), claimSupported: 'Timeout', sourceRef: 'CodexAdapter' },
           ],
         });
       }, runtimeContext.timeBudgetMs);
@@ -175,7 +182,7 @@ export class CodexAdapter implements AgentAdapter {
           this.updateState(runId, {
             status: 'FAILED',
             evidence: [
-              { type: 'malformed_output', claimSupported: `Parse error: ${parseErr.message}`, sourceRef: 'CodexAdapter' },
+              { type: 'malformed_output', evidenceId: __evId(runId, 'malformed_output', 'CodexAdapter', `Parse error: ${parseErr.message}`), claimSupported: `Parse error: ${parseErr.message}`, sourceRef: 'CodexAdapter' },
             ],
           });
           return;
@@ -189,7 +196,7 @@ export class CodexAdapter implements AgentAdapter {
           this.updateState(runId, {
             status: 'FAILED',
             evidence: [
-              { type: 'malformed_output', claimSupported: 'Model returned malformed JSON without valid code block', sourceRef: 'CodexAdapter' },
+              { type: 'malformed_output', evidenceId: __evId(runId, 'malformed_output', 'CodexAdapter', 'Model returned malformed JSON without valid code block'), claimSupported: 'Model returned malformed JSON without valid code block', sourceRef: 'CodexAdapter' },
             ],
           });
           return;
@@ -222,7 +229,7 @@ export class CodexAdapter implements AgentAdapter {
             runStatus = 'FAILED';
             denialEvidence.push({
               type: 'tool_denial',
-              claimSupported: result.summary,
+              evidenceId: __evId(runId, 'tool_denial', toolRequest.requestId, result.summary), claimSupported: result.summary,
               sourceRef: toolRequest.requestId,
             });
           } else if (result.status === 'FAILED' || result.status === 'TIMED_OUT' || result.status === 'UNKNOWN') {
@@ -249,7 +256,7 @@ export class CodexAdapter implements AgentAdapter {
           evidence: [
             {
               type: 'model',
-              claimSupported: response.model,
+              evidenceId: __evId(runId, 'model', response.id, response.model), claimSupported: response.model,
               sourceRef: response.id,
             },
             ...denialEvidence,
@@ -271,7 +278,7 @@ export class CodexAdapter implements AgentAdapter {
         if (status === 429) {
           retryEvidence.push({
             type: 'retry',
-            claimSupported: `Rate limited (429) on attempt ${attempt + 1}`,
+            evidenceId: __evId(runId, 'retry', 'CodexAdapter', `Rate limited (429) on attempt ${attempt + 1}`), claimSupported: `Rate limited (429) on attempt ${attempt + 1}`,
             sourceRef: 'CodexAdapter',
           });
           if (attempt < MAX_RETRIES - 1) {
@@ -286,7 +293,7 @@ export class CodexAdapter implements AgentAdapter {
         } else if (status >= 500) {
           retryEvidence.push({
             type: 'retry',
-            claimSupported: `Server error (${status}) on attempt ${attempt + 1}`,
+            evidenceId: __evId(runId, 'retry', 'CodexAdapter', `Server error (${status}) on attempt ${attempt + 1}`), claimSupported: `Server error (${status}) on attempt ${attempt + 1}`,
             sourceRef: 'CodexAdapter',
           });
           if (attempt < MAX_RETRIES - 1) {
