@@ -146,44 +146,122 @@ describe('Full Worker Integration Dispatch (P12-R26)', () => {
     expect(crossRes.status).toBe(403);
   });
 
-  it('Concurrent claims: multiple workers trying to process the same READY item prevent duplicate attempts', async () => {
-    // Create & dispatch item
-    const createRes = await request(app)
-      .post('/api/work-items').set('Origin', 'http://localhost:5173')
-      .set('Cookie', sessionCookie)
-      .send({ objective: 'Concurrent Test' });
+
+
+  it('Deterministic concurrency (CAS Proof): synchronized store.startAttempt executions on same READY item result in exact 1 Attempt', async () => {
+    const createRes = await request(app).post('/api/work-items').set('Origin', 'http://localhost:5173').set('Cookie', sessionCookie).send({ objective: 'CAS Proof' });
     const wiId = createRes.body.id;
+    let wi = await workStore.getWorkItem(wiId);
+    wi = await workStore.transitionWorkItem({ workItemId: wiId, expectedRevision: wi.revision, to: 'READY' });
 
-    await request(app)
-      .post(`/api/work-items/${wiId}/start`).set('Origin', 'http://localhost:5173')
-      .set('Cookie', sessionCookie)
-      .send();
+    // We invoke workStore.startAttempt directly to prove the transactional CAS rollback
+    const attemptBase = {
+      id: randomUUID(),
+      projectId: wi.projectId,
+      workItemId: wi.id,
+      attemptNumber: 1,
+      state: 'NOT_STARTED' as const,
+      workPackageVersion: 1,
+      agentRunId: 'test-run',
+      agentAdapterId: 'mock-adapter',
+      startedAt: null,
+      endedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    // Create two separate attempt inputs with different IDs so we can track them
+    const attempt1 = { ...attemptBase, id: randomUUID() };
+    const attempt2 = { ...attemptBase, id: randomUUID() };
 
-    // Create a slow mock agent adapter that waits a bit so both workers claim it if possible
-    class SlowMockAdapter extends MockAgentAdapter {
+    // Run them perfectly concurrently
+    const p1 = workStore.startAttempt({ attempt: attempt1, expectedWorkItemRevision: wi.revision });
+    const p2 = workStore.startAttempt({ attempt: attempt2, expectedWorkItemRevision: wi.revision });
+    
+    const results = await Promise.allSettled([p1, p2]);
+    
+    const fulfilled = results.filter(r => r.status === 'fulfilled');
+    const rejected = results.filter(r => r.status === 'rejected');
+    
+    expect(fulfilled.length).toBe(1);
+    expect(rejected.length).toBe(1);
+    
+    // Explicit CAS Proof: The rejected one MUST be WorkItemRevisionConflictError
+    // We do NOT accept InvalidWorkItemTransitionError because they are both starting from the exact same revision.
+    const reasonName = (rejected[0] as PromiseRejectedResult).reason.name;
+    // We expect WorkItemRevisionConflictError or ActiveAttemptExistsError (if read-committed sees the active attempt before CAS)
+    // Actually, if CAS works, it's WorkItemRevisionConflictError because the expected revision no longer matches the row.
+    expect(reasonName).toBe('WorkItemRevisionConflictError');
+    
+    // Exact 1 Attempt in DB
+    const attempts = await prisma.attempt.findMany({ where: { workItemId: wiId } });
+    expect(attempts.length).toBe(1);
+    
+    // The successful attempt must match the one that fulfilled
+    const successfulAttemptId = (fulfilled[0] as PromiseFulfilledResult<{ attempt: { id: string } }>).value.attempt.id;
+    expect(attempts[0].id).toBe(successfulAttemptId);
+    
+    // Explicitly verify currentAttemptId wasn't mutated by the loser
+    const finalWi = await prisma.workItem.findUnique({ where: { id: wiId } });
+    expect(finalWi?.currentAttemptId).toBe(successfulAttemptId);
+  });
+
+  it('Stale revision: atomic rejection without mutating state', async () => {
+    const createRes = await request(app).post('/api/work-items').set('Origin', 'http://localhost:5173').set('Cookie', sessionCookie).send({ objective: 'Stale' });
+    const wiId = createRes.body.id;
+    const wi = await workStore.getWorkItem(wiId);
+    
+    // First operation succeeds
+    await workStore.transitionWorkItem({ workItemId: wiId, expectedRevision: wi.revision, to: 'READY' });
+    
+    // Second operation uses STALE revision
+    const stalePromise = workStore.transitionWorkItem({ workItemId: wiId, expectedRevision: wi.revision, to: 'ASSIGNED' });
+    await expect(stalePromise).rejects.toThrow(/revision/i);
+
+    // Verify state was not mutated by the rejected operation
+    const current = await workStore.getWorkItem(wiId);
+    expect(current.lifecycleState).toBe('READY'); // Not ASSIGNED
+    expect(current.revision).toBe(wi.revision + 1); // Only mutated by first operation
+  });
+
+
+  it('Engine concurrency: synchronized MinimalWorkflowEngine executions on same READY item result in exact 1 Attempt and 1 Adapter call', async () => {
+    const createRes = await request(app).post('/api/work-items').set('Origin', 'http://localhost:5173').set('Cookie', sessionCookie).send({ objective: 'Engine Concurrency' });
+    const wiId = createRes.body.id;
+    let wi = await workStore.getWorkItem(wiId);
+    wi = await workStore.transitionWorkItem({ workItemId: wiId, expectedRevision: wi.revision, to: 'READY' });
+
+    let adapterExecutions = 0;
+    class CountingMockAdapter extends MockAgentAdapter {
       async execute(...args: Parameters<MockAgentAdapter['execute']>) {
-        await new Promise(r => setTimeout(r, 100));
+        adapterExecutions++;
         return super.execute(args[0], args[1]);
       }
     }
-    const slowEngine1 = new MinimalWorkflowEngine(workStore);
-    const slowEngine2 = new MinimalWorkflowEngine(workStore);
-
-    const worker1 = new WorkerHost(prisma, workStore, slowEngine1, new SlowMockAdapter('SUCCESS'), { pollIntervalMs: 200 });
-    const worker2 = new WorkerHost(prisma, workStore, slowEngine2, new SlowMockAdapter('SUCCESS'), { pollIntervalMs: 200 });
-
-    worker1.start();
-    worker2.start();
-
-    // Give them time to both poll and process
-    await new Promise(r => setTimeout(r, 600));
-
-    await worker1.stop();
-    await worker2.stop();
-
+    
+    const countAdapter = new CountingMockAdapter('SUCCESS');
+    const syncEngine = new MinimalWorkflowEngine(workStore);
+    
+    const dummyWP = { id: 'wp-2', workPackageId: 'wp-2', revision: 1, version: 1, projectId: wi.projectId, workItemId: wi.id, specification: { description: 'dummy' } };
+    
+    // Launch engine executions concurrently
+    const req1 = syncEngine.execute({ workItem: wi, workPackage: dummyWP, adapter: countAdapter, workflowRunId: randomUUID(), correlationId: randomUUID() });
+    const req2 = syncEngine.execute({ workItem: wi, workPackage: dummyWP, adapter: countAdapter, workflowRunId: randomUUID(), correlationId: randomUUID() });
+    
+    const results = await Promise.allSettled([req1, req2]);
+    
+    const fulfilled = results.filter(r => r.status === 'fulfilled');
+    const rejected = results.filter(r => r.status === 'rejected');
+    
+    expect(fulfilled.length).toBe(1);
+    expect(rejected.length).toBe(1);
+    
+    // Explicitly verify adapter calls
+    expect(adapterExecutions).toBe(1);
+    
+    // Exactly 1 Attempt created
     const attempts = await prisma.attempt.findMany({ where: { workItemId: wiId } });
-    expect(attempts.length).toBe(1); // EXACTLY ONE ATTEMPT despite concurrent workers
-    expect(attempts[0].state).toBe('SUCCEEDED');
+    expect(attempts.length).toBe(1);
   });
 
 });
