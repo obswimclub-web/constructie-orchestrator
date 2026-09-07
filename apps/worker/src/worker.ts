@@ -187,14 +187,14 @@ export class WorkerHost {
           }
         }
         
-        let evIdx = 0;
         for (const ev of result.agentResult.evidence || []) {
-          const rawHash = crypto.createHash('sha256').update(result.agentRun?.runId + '-ev-' + evIdx++).digest('hex');
-          const deterministicId = rawHash.slice(0,8)+'-'+rawHash.slice(8,12)+'-4'+rawHash.slice(13,16)+'-8'+rawHash.slice(17,20)+'-'+rawHash.slice(20,32);
+          if (!ev.evidenceId) {
+            throw new Error(`Worker persistence rejected evidence: missing evidenceId for claim '${ev.claimSupported}'`);
+          }
 
           try {
             await this.evidenceStore.saveEvidence({
-              id: deterministicId,
+              id: ev.evidenceId,
               projectId: item.projectId,
               runId: result.agentRun?.runId || 'unknown',
               workItemId: item.id,

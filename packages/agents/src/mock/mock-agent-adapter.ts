@@ -1,8 +1,8 @@
 
 import crypto from 'node:crypto';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function __evId(base: string, claim: any): string {
-  const hash = crypto.createHash('sha256').update(base + ':' + String(claim)).digest('hex').slice(0, 32);
+function __evId(base: string, type: string, sourceRef: string, claim: any, index: number = 0): string {
+  const hash = crypto.createHash('sha256').update(base + ':' + String(type) + ':' + String(sourceRef) + ':' + String(claim) + ':' + index).digest('hex').slice(0, 32);
   return hash.slice(0, 8) + '-' + hash.slice(8, 12) + '-4' + hash.slice(13, 16) + '-8' + hash.slice(17, 20) + '-' + hash.slice(20, 32);
 }
 
@@ -90,7 +90,7 @@ export class MockAgentAdapter implements AgentAdapter {
         },
       ];
       const claim = 'Mock successful completion';
-      const evId = __evId(runId, claim);
+      const evId = __evId(runId, 'AGENT_RESULT', 'MockAdapter', claim, 0);
       const ev: EvidenceRef = { type: 'AGENT_RESULT', claimSupported: claim, sourceRef: 'MockAdapter', evidenceId: evId };
       evidenceList = [ev];
       // use evidence somehow so it's not unused

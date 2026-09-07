@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function __evId(base: string, claim: any): string {
-  const hash = crypto.createHash('sha256').update(base + ':' + String(claim)).digest('hex').slice(0, 32);
+function __evId(base: string, type: string, sourceRef: string, claim: any, index: number = 0): string {
+  const hash = crypto.createHash('sha256').update(base + ':' + String(type) + ':' + String(sourceRef) + ':' + String(claim) + ':' + index).digest('hex').slice(0, 32);
   return hash.slice(0, 8) + '-' + hash.slice(8, 12) + '-4' + hash.slice(13, 16) + '-8' + hash.slice(17, 20) + '-' + hash.slice(20, 32);
 }
 import { spawn, type ChildProcess } from 'child_process';
@@ -99,7 +99,7 @@ export class AntigravityPythonBridge implements AgentBridge {
           }
           if (parsed.evidence && Array.isArray(parsed.evidence)) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            parsed.evidence = parsed.evidence.map((e: any) => ({ ...e, evidenceId: e.evidenceId || __evId(runRef?.runId || 'unknown', e.claimSupported) }));
+            parsed.evidence = parsed.evidence.map((e: any, i: number) => ({ ...e, evidenceId: __evId(runRef.runId, e.type || 'unknown_type', e.sourceRef || 'unknown_source', e.claimSupported, i) }));
           }
           const validated = AgentRunResultSchema.parse(parsed);
           validated.summary = this.redactor ? this.redactor.redact(validated.summary) : validated.summary;
@@ -225,7 +225,7 @@ export class AntigravityPythonBridge implements AgentBridge {
       actionsTaken: [],
       artifacts: [],
       findings: [],
-      evidence: [{ type: 'malformed_output', evidenceId: __evId(runRef.runId, 'Malformed output from provider'), claimSupported: 'Malformed output from provider', sourceRef: 'AntigravityPythonBridge' }],
+      evidence: [{ type: 'malformed_output', evidenceId: __evId(runRef.runId, 'malformed_output', 'AntigravityPythonBridge', 'Malformed output from provider'), claimSupported: 'Malformed output from provider', sourceRef: 'AntigravityPythonBridge' }],
       unresolvedItems: [],
       requestedInputs: [],
       sideEffects: [],
@@ -242,7 +242,7 @@ export class AntigravityPythonBridge implements AgentBridge {
       actionsTaken: [],
       artifacts: [],
       findings: [],
-      evidence: [{ type: 'error', evidenceId: __evId(runRef.runId, summary.includes('spawn') ? 'Spawn failure' : 'Error'), claimSupported: summary.includes('spawn') ? 'Spawn failure' : 'Error', sourceRef: 'AntigravityPythonBridge' }],
+      evidence: [{ type: 'error', evidenceId: __evId(runRef.runId, 'error', 'AntigravityPythonBridge', summary.includes('spawn') ? 'Spawn failure' : 'Error'), claimSupported: summary.includes('spawn') ? 'Spawn failure' : 'Error', sourceRef: 'AntigravityPythonBridge' }],
       unresolvedItems: [],
       requestedInputs: [],
       sideEffects: [],
@@ -259,7 +259,7 @@ export class AntigravityPythonBridge implements AgentBridge {
       actionsTaken: [],
       artifacts: [],
       findings: [],
-      evidence: [{ type: 'timeout', evidenceId: __evId(runRef.runId, 'Timeout'), claimSupported: 'Timeout', sourceRef: 'AntigravityPythonBridge' }],
+      evidence: [{ type: 'timeout', evidenceId: __evId(runRef.runId, 'timeout', 'AntigravityPythonBridge', 'Timeout'), claimSupported: 'Timeout', sourceRef: 'AntigravityPythonBridge' }],
       unresolvedItems: [],
       requestedInputs: [],
       sideEffects: [],
@@ -276,7 +276,7 @@ export class AntigravityPythonBridge implements AgentBridge {
       actionsTaken: [],
       artifacts: [],
       findings: [],
-      evidence: [{ type: 'cancellation', evidenceId: __evId(runRef.runId, 'Timeout'), claimSupported: 'Timeout', sourceRef: 'AntigravityPythonBridge' }],
+      evidence: [{ type: 'cancellation', evidenceId: __evId(runRef.runId, 'cancellation', 'AntigravityPythonBridge', 'Timeout'), claimSupported: 'Timeout', sourceRef: 'AntigravityPythonBridge' }],
       unresolvedItems: [],
       requestedInputs: [],
       sideEffects: [],
