@@ -20,3 +20,12 @@ proof_package.json
 proof_package.md
 uc-evidence.json
 
+
+# Security cleanup (R65) - Targeted diagnostic dumps
+/db_url.txt
+/vars.json
+/web_vars.json
+/loginRes.json
+/origin.json
+/deployments.json
+/api_deployments.json

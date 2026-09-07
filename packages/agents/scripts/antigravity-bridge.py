@@ -54,7 +54,7 @@ async def dispatch_ipc(tool: str, operation: str, **kwargs) -> Any:
     if 'evidenceCandidates' in result and result['evidenceCandidates']:
         evidence_list.extend(result['evidenceCandidates'])
     elif 'summary' in result:
-        evidence_list.append({"evidenceId": str(uuid.uuid4()), "type": "tool_execution", "sourceRef": tool + ":" + operation, "claimSupported": result['summary']})
+        evidence_list.append({"type": "tool_execution", "sourceRef": tool + ":" + operation, "claimSupported": result['summary']})
     return result
 
 async def main():

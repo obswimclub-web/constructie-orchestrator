@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import App from './App';
 import { MemoryRouter } from 'react-router-dom';
 import * as api from './data/api';
@@ -42,15 +42,29 @@ vi.mock('./data/api', () => ({
 }));
 
 describe('App / LoginBootstrap', () => {
+  let originalReload: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+  beforeEach(() => {
+    originalReload = window.location.reload;
+    Object.defineProperty(window, 'location', {
+      writable: true,
+      value: { ...window.location, reload: vi.fn() }
+    });
+  });
+
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    Object.defineProperty(window, 'location', {
+      writable: true,
+      value: { ...window.location, reload: originalReload }
+    });
   });
 
   it('renders application when authenticated on startup', async () => {
     vi.mocked(api.checkSession).mockResolvedValue({ authenticated: true, projectBound: true });
     render(<MemoryRouter><App /></MemoryRouter>);
-    
+
     await waitFor(() => {
       expect(screen.queryByText('Loading authentication state...')).toBeNull();
       expect(screen.queryByText('Owner Authentication')).toBeNull();
@@ -60,25 +74,36 @@ describe('App / LoginBootstrap', () => {
   it('renders LoginBootstrap overlay when unauthenticated on startup', async () => {
     vi.mocked(api.checkSession).mockResolvedValue({ authenticated: false, projectBound: false });
     render(<MemoryRouter><App /></MemoryRouter>);
-    
+
     expect(screen.getByText('Loading authentication state...')).toBeDefined();
     expect(await screen.findByText('Owner Authentication')).toBeDefined();
   });
 
-  it('handles login flow correctly', async () => {
-    vi.mocked(api.checkSession).mockResolvedValue({ authenticated: false, projectBound: false });
-    vi.mocked(api.loginWithBootstrap).mockResolvedValue();
+  it('handles login flow explicitly showing errors and transitioning to authenticated UI', async () => {
+    vi.mocked(api.checkSession).mockResolvedValueOnce({ authenticated: false, projectBound: false });
+
     render(<MemoryRouter><App /></MemoryRouter>);
-    
     const input = await screen.findByLabelText('Bootstrap Key');
-    fireEvent.change(input, { target: { value: 'my-secret-key' } });
-    
-    const submit = screen.getAllByRole('button', { name: 'Authenticate' })[0];
-    fireEvent.click(submit);
-    
-    expect(api.loginWithBootstrap).toHaveBeenCalledWith('my-secret-key');
+
+    // Simulate error
+    vi.mocked(api.loginWithBootstrap).mockRejectedValueOnce(new Error('Invalid key'));
+    fireEvent.change(input, { target: { value: 'wrong-key' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Authenticate' })[0]);
+
+    expect(await screen.findByText('Invalid bootstrap key')).toBeDefined();
+    expect(api.loginWithBootstrap).toHaveBeenCalledWith('wrong-key');
+
+    // Simulate success
+    vi.mocked(api.loginWithBootstrap).mockResolvedValueOnce();
+    fireEvent.change(input, { target: { value: 'right-key' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Authenticate' })[0]);
+
     await waitFor(() => {
-      expect(api.loginWithBootstrap).toHaveBeenCalled();
+      expect(api.loginWithBootstrap).toHaveBeenCalledWith('right-key');
+      expect(window.location.reload).toHaveBeenCalled();
     });
+
+    // Check that it transitioned to authenticated state (Owner Authentication disappears)
+    expect(screen.queryByText('Owner Authentication')).toBeNull();
   });
 });
