@@ -28,7 +28,7 @@ describe('P12-R60 Final V1 Closure', () => {
   let workerHost: WorkerHost;
   let workStore: WorkStore;
   let evidenceStore: PrismaEvidenceStore;
-  
+
   beforeAll(async () => {
     workItemId = crypto.randomUUID();
     workStore = new WorkStore(prisma);
@@ -120,7 +120,7 @@ describe('P12-R60 Final V1 Closure', () => {
 
     const evidence = await prisma.evidenceRecord.findMany({ where: { workItemId } });
     const evService = new EvidenceVerificationService(evidenceStore, workStore);
-    
+
     await evService.recordVerificationAndResolve({
       workItem: await workStore.getWorkItem(workItemId),
       runId: evidence[0].runId,
@@ -149,7 +149,7 @@ describe('P12-R60 Final V1 Closure', () => {
 
     const engine = new MinimalWorkflowEngine(workStore);
     const mockAdapter = new MockAgentAdapter('SUCCESS');
-    
+
     // Create a worker host with an EvidenceStore that THROWS on the first saveEvidence!
     const crashingEvidenceStore = new PrismaEvidenceStore(prisma);
     const originalSave = crashingEvidenceStore.saveEvidence.bind(crashingEvidenceStore);
@@ -163,7 +163,7 @@ describe('P12-R60 Final V1 Closure', () => {
     };
 
     const crashingHost = new WorkerHost(prisma, workStore, engine, mockAdapter, crashingEvidenceStore, { pollIntervalMs: 50 });
-    
+
     // We explicitly call processItem directly instead of start() so we can catch the crash
     const wiToCrash = await workStore.getWorkItem(recoveryWiId);
     try {
@@ -171,8 +171,8 @@ describe('P12-R60 Final V1 Closure', () => {
     } catch {
       // Expected crash
     }
-    
-    // In our WorkerHost, the crash is caught and logged: "unhandled error". 
+
+    // In our WorkerHost, the crash is caught and logged: "unhandled error".
     // It does NOT transition to VERIFICATION_REQUIRED, so it stays RUNNING (or whatever engine set it to).
     // Wait, if it crashes inside WorkerHost, the engine already set it to VERIFICATION_REQUIRED!
     // Ah! engine.execute sets it to VERIFICATION_REQUIRED.

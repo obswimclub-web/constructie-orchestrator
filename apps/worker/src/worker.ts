@@ -117,7 +117,7 @@ export class WorkerHost {
     const correlationId = randomUUID();
     const workflowRunId = randomUUID();
 
-    
+
     const workPackage: WorkPackage = WorkPackageSchema.parse({
       schemaVersion: '1.0.0',
       workPackageId: randomUUID(),
@@ -152,7 +152,7 @@ export class WorkerHost {
         workflowRunId,
       });
 
-      
+
       console.log(
         '[worker] workItem=%s attempt=%s finalState=%s workItemState=%s',
         item.id,
@@ -161,14 +161,14 @@ export class WorkerHost {
         result.workItem.lifecycleState,
       );
 
-      
+
       // Persist artifacts and evidence
       if (result.agentResult) {
         let artIdx = 0;
         for (const art of result.agentResult.artifacts || []) {
           const rawHash = crypto.createHash('sha256').update(result.agentRun?.runId + '-art-' + artIdx++).digest('hex');
           const deterministicId = rawHash.slice(0,8)+'-'+rawHash.slice(8,12)+'-4'+rawHash.slice(13,16)+'-8'+rawHash.slice(17,20)+'-'+rawHash.slice(20,32);
-          
+
           try {
             await this.evidenceStore.saveArtifact({
               id: art.artifactId || deterministicId,
@@ -186,7 +186,7 @@ export class WorkerHost {
              if ((err as Error).name !== 'DuplicateRecordError') throw err;
           }
         }
-        
+
         for (const ev of result.agentResult.evidence || []) {
           if (!ev.evidenceId) {
             throw new Error(`Worker persistence rejected evidence: missing evidenceId for claim '${ev.claimSupported}'`);

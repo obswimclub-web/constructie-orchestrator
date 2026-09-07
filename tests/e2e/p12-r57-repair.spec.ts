@@ -27,7 +27,7 @@ describe('P12-R57 Evidence & Project Binding Repair (Real E2E)', () => {
   let workerHost: WorkerHost;
   let workStore: WorkStore;
   let evidenceStore: PrismaEvidenceStore;
-  
+
   beforeAll(async () => {
     workItemId = crypto.randomUUID();
     workStore = new WorkStore(prisma);
@@ -39,14 +39,14 @@ describe('P12-R57 Evidence & Project Binding Repair (Real E2E)', () => {
     await prisma.attempt.deleteMany({ where: { workItemId } });
     await prisma.evidenceRecord.deleteMany({ where: { workItemId } });
     await prisma.artifactRecord.deleteMany({ where: { workItemId } });
-    
+
     if (projectId) {
       await prisma.workItem.deleteMany({ where: { projectId } });
       await prisma.projectEvent.deleteMany({ where: { projectId } });
       await prisma.outboxEvent.deleteMany({ where: { projectId } });
       await prisma.project.delete({ where: { id: projectId } });
     }
-    
+
     await prisma.$disconnect();
   });
 
@@ -57,13 +57,13 @@ describe('P12-R57 Evidence & Project Binding Repair (Real E2E)', () => {
       .send({ bootstrapKey: OWNER_KEY });
      expect(loginRes.status).toBe(200);
     const loginCookie = loginRes.headers['set-cookie'][0];
-    
+
     const createRes = await request(API_URL)
       .post('/api/projects')
       .set('Origin', 'http://localhost:5173')
       .set('Cookie', loginCookie)
       .send({ name: 'Test Project', slug: `test-project-${crypto.randomUUID()}` });
-    
+
     expect(createRes.status).toBe(201);
     projectId = createRes.body.id;
     ownerCookie = createRes.headers['set-cookie'][0];
@@ -88,18 +88,18 @@ describe('P12-R57 Evidence & Project Binding Repair (Real E2E)', () => {
       .set('Origin', 'http://localhost:5173')
       .set('Cookie', cookie2)
       .send({ name: 'Other', slug: `other-${crypto.randomUUID()}` });
-    
+
     const otherCookie = create2.headers['set-cookie'][0];
     const otherProjectId = create2.body.id;
-    
+
     const crossRes = await request(API_URL)
       .post(`/api/work-items/${workItemId}/start`)
       .set('Origin', 'http://localhost:5173')
       .set('Cookie', otherCookie)
       .send({});
-    
+
     expect(crossRes.status).toBe(403);
-    
+
     await prisma.projectEvent.deleteMany({ where: { projectId: otherProjectId } });
     await prisma.outboxEvent.deleteMany({ where: { projectId: otherProjectId } });
     await prisma.project.delete({ where: { id: otherProjectId } });
@@ -111,7 +111,7 @@ describe('P12-R57 Evidence & Project Binding Repair (Real E2E)', () => {
       .set('Origin', 'http://localhost:5173')
       .set('Cookie', ownerCookie)
       .send({});
-    
+
     expect(startRes.status).toBe(200);
     expect(startRes.body.lifecycleState).toBe('READY');
   });
@@ -120,7 +120,7 @@ describe('P12-R57 Evidence & Project Binding Repair (Real E2E)', () => {
     const engine = new MinimalWorkflowEngine(workStore);
     const mockAdapter = new MockAgentAdapter('SUCCESS');
     workerHost = new WorkerHost(prisma, workStore, engine, mockAdapter, evidenceStore, { pollIntervalMs: 50 });
-    
+
     const pStart = workerHost.start();
     await new Promise(r => setTimeout(r, 800));
     await workerHost.stop();
@@ -134,8 +134,8 @@ describe('P12-R57 Evidence & Project Binding Repair (Real E2E)', () => {
     expect(evidence[0].sourceType).toBe('AGENT_RESULT');
   });
 
-  
-  
+
+
   it('duplicate delivery/idempotency does not duplicate evidence or crash', async () => {
     const duplicateWiId = crypto.randomUUID();
     await prisma.workItem.create({
@@ -152,13 +152,13 @@ describe('P12-R57 Evidence & Project Binding Repair (Real E2E)', () => {
     const engine = new MinimalWorkflowEngine(workStore);
     const mockAdapter = new MockAgentAdapter('SUCCESS');
     workerHost = new WorkerHost(prisma, workStore, engine, mockAdapter, evidenceStore, { pollIntervalMs: 50000 });
-    
+
     const wi = await workStore.getWorkItem(duplicateWiId);
-    
+
     // Simulate exact duplicate delivery (e.g. from SQS) processed concurrently
     const p1 = workerHost['processItem'](wi);
     const p2 = workerHost['processItem'](wi);
-    
+
     await Promise.all([p1, p2]);
 
     const updatedWi = await prisma.workItem.findUnique({ where: { id: duplicateWiId } });
@@ -188,11 +188,11 @@ describe('P12-R57 Evidence & Project Binding Repair (Real E2E)', () => {
       async getEvidence() { return []; }
       async getArtifacts() { return []; }
     }
-    
+
     const engine = new MinimalWorkflowEngine(workStore);
     const noEvAdapter = new NoEvidenceAdapter('SUCCESS');
     workerHost = new WorkerHost(prisma, workStore, engine, noEvAdapter, evidenceStore, { pollIntervalMs: 50 });
-    
+
     const pStart = workerHost.start();
     await new Promise(r => setTimeout(r, 600));
     await workerHost.stop();
@@ -214,7 +214,7 @@ describe('P12-R57 Evidence & Project Binding Repair (Real E2E)', () => {
       verifiedAt: new Date()
     };
     verification.digest = computeVerificationDigest(verification );
-    
+
     expect(() => assertVerificationCanCompleteWorkItem({
       projectId, workItemId: missingWiId, verification: verification , evidence
     })).toThrow('PASS verification must reference at least one EvidenceRecord');
@@ -224,7 +224,7 @@ describe('P12-R57 Evidence & Project Binding Repair (Real E2E)', () => {
 
     const evidence = await prisma.evidenceRecord.findMany({ where: { workItemId } });
     const evService = new EvidenceVerificationService(evidenceStore, workStore);
-    
+
     await evService.recordVerificationAndResolve({
       workItem: await workStore.getWorkItem(workItemId),
       runId: evidence[0].runId,
