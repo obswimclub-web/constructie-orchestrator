@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 import { app } from '../../apps/api/src/index';
 import { PrismaClient } from '@prisma/client';
@@ -40,23 +40,28 @@ describe('P12 Entry Flow API', () => {
   });
 
   it('SESSION: rejects expired session', async () => {
-    // Generate an expired token directly
-    const expiredPayload = { version: 1, role: 'OWNER', projectId: null, issuedAt: Date.now() - 100000, expiresAt: Date.now() - 50000 };
-    
-    // Quick trick: we can sign a cookie ourselves since we know the secret and format
-    const signCookie = (val: string, secret: string) => val + '.' + createHmac('sha256', secret).update(val).digest('base64').replace(/=+$/, '');
-    const signed = 's:' + signCookie(JSON.stringify(expiredPayload), 'test-session-secret');
-    const expiredCookie = 'co_session=' + encodeURIComponent(signed);
-
-    const res = await request(app).post('/api/projects').set('Cookie', expiredCookie).send({ name: 'T', slug: 't' });
-    expect(res.status).toBe(401);
+    vi.useFakeTimers();
+    try {
+      // 1. Emite o sesiune valida reala
+      const loginRes = await request(app).post('/api/auth/login').send({ bootstrapKey: 'test-owner-key' });
+      const cookie = loginRes.headers['set-cookie'][0].split(';')[0];
+      
+      // 2. Avanseaza timpul peste perioada de expirare (de obicei > 24h, sa luam 30 days)
+      vi.advanceTimersByTime(30 * 24 * 60 * 60 * 1000 + 1000);
+      
+      // 3. Verifica daca sesiunea este respinsa la un call state-changing
+      const res = await request(app).post('/api/projects').set('Origin', 'http://localhost:5173').set('Cookie', cookie).send({ name: 'T', slug: 't' });
+      expect(res.status).toBe(401);
+    } finally {
+      vi.useRealTimers();
+    }
   });
   
   it('BEARER: rejects malformed or invalid signatures without crashing', async () => {
-    let res = await request(app).post('/api/work-items').set('Authorization', 'Bearer invalid-token').send({ objective: 'Test' });
+    let res = await request(app).post('/api/work-items').set('Origin', 'http://localhost:5173').set('Authorization', 'Bearer invalid-token').send({ objective: 'Test' });
     expect(res.status).toBe(401);
     
-    res = await request(app).post('/api/work-items').set('Authorization', 'Bearer pId.wrong_sig_length_here').send({ objective: 'Test' });
+    res = await request(app).post('/api/work-items').set('Origin', 'http://localhost:5173').set('Authorization', 'Bearer pId.wrong_sig_length_here').send({ objective: 'Test' });
     expect(res.status).toBe(401);
   });
 
@@ -93,7 +98,7 @@ describe('P12 Entry Flow API', () => {
   it('LOGIN: tampered cookie rejected', async () => {
     const tampered = sessionCookie + 'bad';
     const res = await request(app)
-      .post('/api/projects')
+      .post('/api/projects').set('Origin', 'http://localhost:5173')
       .set('Cookie', tampered)
       .send({ name: 'Test', slug: 'test' });
     expect(res.status).toBe(401);
@@ -103,7 +108,7 @@ describe('P12 Entry Flow API', () => {
   // PROJECT
   // ==========================================
   it('PROJECT: anonymous denied', async () => {
-    const res = await request(app).post('/api/projects').send({ name: 'Test', slug: 'test' });
+    const res = await request(app).post('/api/projects').set('Origin', 'http://localhost:5173').send({ name: 'Test', slug: 'test' });
     expect(res.status).toBe(401);
   });
 
@@ -114,7 +119,7 @@ describe('P12 Entry Flow API', () => {
     projectToken = `${projectId}.${hmac.digest('hex')}`;
 
     const res = await request(app)
-      .post('/api/projects')
+      .post('/api/projects').set('Origin', 'http://localhost:5173')
       .set('Authorization', `Bearer ${projectToken}`)
       .send({ name: 'Test', slug: 'test' });
     
@@ -124,7 +129,7 @@ describe('P12 Entry Flow API', () => {
 
   it('PROJECT: Owner session unbound creates project and issues replacement cookie', async () => {
     const res = await request(app)
-      .post('/api/projects')
+      .post('/api/projects').set('Origin', 'http://localhost:5173')
       .set('Cookie', sessionCookie)
       .send({
         name: 'Integration Project',
@@ -159,7 +164,7 @@ describe('P12 Entry Flow API', () => {
 
   it('PROJECT: second create on bound session rejected', async () => {
     const res = await request(app)
-      .post('/api/projects')
+      .post('/api/projects').set('Origin', 'http://localhost:5173')
       .set('Cookie', sessionCookie)
       .send({ name: 'Another Project', slug: 'another' });
     
@@ -172,7 +177,7 @@ describe('P12 Entry Flow API', () => {
   // ==========================================
   it('WORK ITEM: bound Owner session creates work item (project isolation)', async () => {
     const res = await request(app)
-      .post('/api/work-items')
+      .post('/api/work-items').set('Origin', 'http://localhost:5173')
       .set('Cookie', sessionCookie)
       .send({ objective: 'Owner run' });
     
@@ -194,7 +199,7 @@ describe('P12 Entry Flow API', () => {
     });
 
     const res = await request(app)
-      .post('/api/work-items')
+      .post('/api/work-items').set('Origin', 'http://localhost:5173')
       .set('Authorization', `Bearer ${pToken}`)
       .send({ objective: 'Service run' });
     
@@ -207,7 +212,7 @@ describe('P12 Entry Flow API', () => {
   // ==========================================
   it('LOGOUT: clears cookie and safe to repeat', async () => {
     const res = await request(app)
-      .post('/api/auth/logout')
+      .post('/api/auth/logout').set('Origin', 'http://localhost:5173')
       .set('Cookie', sessionCookie);
     
     expect(res.status).toBe(200);

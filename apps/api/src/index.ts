@@ -36,12 +36,48 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 const app: express.Express = express();
-app.use(cors({ origin: process.env.WEB_ORIGIN || 'http://localhost:5173', credentials: true }));
+
+// Compute dynamically to allow tests to change process.env
+const getExactWebOrigin = () => {
+  return process.env.NODE_ENV === 'production' 
+    ? (process.env.WEB_ORIGIN || 'fail-closed-missing-origin') 
+    : (process.env.WEB_ORIGIN || 'http://localhost:5173');
+};
+
+app.use(cors({ 
+  origin: (origin, callback) => {
+    const allowed = getExactWebOrigin();
+    if (!origin || origin === allowed) {
+      callback(null, allowed);
+    } else {
+      callback(null, false);
+    }
+  },
+  credentials: true 
+}));
 app.use(express.json());
 app.use(cookieParser(process.env.SESSION_SECRET));
 
+// ─── CSRF Protection ────────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+    const origin = req.headers.origin;
+    const allowed = getExactWebOrigin();
+    // If an origin is provided, it must exactly match our configured WEB_ORIGIN
+    if (origin && origin !== allowed) {
+      return res.status(403).json({ error: 'CSRF violation: invalid origin' });
+    }
+    // If no origin is provided, but they are trying to use a cookie session, block it.
+    if (!origin && req.signedCookies && req.signedCookies['co_session']) {
+      return res.status(403).json({ error: 'CSRF violation: missing origin for cookie session' });
+    }
+  }
+  next();
+});
+
 // ─── Authentication Middleware ────────────────────────────────────────────────
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+
 
 app.get('/api/auth/session', (req, res) => {
   const sessionData = req.signedCookies['co_session'];
@@ -94,7 +130,7 @@ app.post('/api/auth/login', (req, res) => {
     httpOnly: true,
     signed: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
     path: '/',
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   });
@@ -106,7 +142,7 @@ app.post('/api/auth/logout', (req, res) => {
   res.clearCookie('co_session', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
     path: '/'
   });
   res.status(200).json({ status: 'ok' });
@@ -240,7 +276,7 @@ app.post('/api/projects', async (req, res) => {
         httpOnly: true,
         signed: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
         path: '/',
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
       });
