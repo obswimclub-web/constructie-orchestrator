@@ -343,6 +343,63 @@ app.post('/api/work-items', async (req, res) => {
   }
 });
 
+
+app.post('/api/work-items/:id/start', async (req, res) => {
+  try {
+    const authContext = (req as unknown as AuthRequest).authContext;
+    const authProjectId = authContext.projectId;
+    if (!authProjectId) return res.status(403).json({ error: 'Project context required' });
+    if (authContext.role !== 'OWNER') {
+      return res.status(403).json({ error: 'Only Owner can dispatch work items' });
+    }
+
+    const workItemId = req.params.id;
+    const { WorkStore } = await import('@co/persistence');
+    const store = new WorkStore(prisma);
+    
+    const workItem = await store.getWorkItem(workItemId);
+    if (!workItem) {
+      return res.status(404).json({ error: 'WorkItem not found' });
+    }
+    if (workItem.projectId !== authProjectId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    if (workItem.lifecycleState === 'READY' || workItem.lifecycleState === 'QUEUED') {
+      return res.status(200).json({
+        ...workItem,
+        createdAt: workItem.createdAt.toISOString(),
+        updatedAt: workItem.updatedAt.toISOString(),
+      });
+    }
+
+    if (workItem.lifecycleState !== 'DRAFT') {
+      return res.status(409).json({ error: `Cannot start work item from state ${workItem.lifecycleState}` });
+    }
+
+    const updated = await store.transitionWorkItem({
+      workItemId,
+      expectedRevision: workItem.revision,
+      to: 'READY',
+    });
+
+    res.status(200).json({
+      ...updated,
+      createdAt: updated.createdAt.toISOString(),
+      updatedAt: updated.updatedAt.toISOString(),
+    });
+  } catch (err: unknown) {
+    const e = err as Error;
+    const { defaultRedactor } = await import('@co/observability');
+    if (e.name === 'NotFoundError' || (e as { code?: string }).code === 'P2025') { return res.status(404).json({ error: 'WorkItem not found' }); }
+    if (e.name === 'InvalidWorkItemTransitionError' || e.name === 'WorkItemRevisionConflictError') {
+      return res.status(409).json({ error: String(e.message) });
+    }
+    console.error('[API Error]', defaultRedactor.redact(String(e)));
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 app.get('/api/work-items', async (req, res) => {
   try {
     const authProjectId = (req as unknown as AuthRequest).authContext.projectId;

@@ -54,8 +54,13 @@ export class WorkStore {
       const current = await tx.workItem.findUniqueOrThrow({ where: { id: input.workItemId } });
       if (current.revision !== input.expectedRevision) throw new WorkItemRevisionConflictError(input.workItemId, input.expectedRevision);
       assertWorkItemTransition(current.lifecycleState as WorkItemLifecycleState, input.to);
-      const row = await tx.workItem.update({ where: { id: input.workItemId }, data: { lifecycleState: input.to, revision: { increment: 1 } } });
-      return mapWorkItem(row);
+      const { count } = await tx.workItem.updateMany({
+        where: { id: input.workItemId, revision: input.expectedRevision },
+        data: { lifecycleState: input.to, revision: { increment: 1 } }
+      });
+      if (count === 0) throw new WorkItemRevisionConflictError(input.workItemId, input.expectedRevision);
+      const updated = await tx.workItem.findUniqueOrThrow({ where: { id: input.workItemId } });
+      return mapWorkItem(updated);
     });
   }
 
@@ -67,6 +72,11 @@ export class WorkStore {
 
       const existing = await tx.attempt.findFirst({ where: { workItemId: work.id, active: true } });
       if (existing) throw new ActiveAttemptExistsError(work.id);
+      const { count } = await tx.workItem.updateMany({
+        where: { id: work.id, revision: input.expectedWorkItemRevision },
+        data: { lifecycleState: "ASSIGNED", currentAttemptId: input.attempt.id, revision: { increment: 1 } }
+      });
+      if (count === 0) throw new WorkItemRevisionConflictError(work.id, input.expectedWorkItemRevision);
 
       const createdAttempt = await tx.attempt.create({ data: {
         id: input.attempt.id,
@@ -83,7 +93,7 @@ export class WorkStore {
         createdAt: input.attempt.createdAt,
         updatedAt: input.attempt.updatedAt,
       }});
-      const updatedWork = await tx.workItem.update({ where: { id: work.id }, data: { lifecycleState: "ASSIGNED", currentAttemptId: createdAttempt.id, revision: { increment: 1 } } });
+      const updatedWork = await tx.workItem.findUniqueOrThrow({ where: { id: work.id } });
       return { workItem: mapWorkItem(updatedWork), attempt: mapAttempt(createdAttempt) };
     });
   }
