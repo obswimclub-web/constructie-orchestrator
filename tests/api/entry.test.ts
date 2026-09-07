@@ -187,6 +187,48 @@ describe('P12 Entry Flow API', () => {
     expect(res.body.projectId).toBeDefined();
   });
 
+  
+  it('WORK ITEM: start explicitly transitions from DRAFT to READY and avoids duplicates', async () => {
+    // Owner creates WorkItem -> initial DRAFT
+    let res = await request(app)
+      .post('/api/work-items').set('Origin', 'http://localhost:5173')
+      .set('Cookie', sessionCookie)
+      .send({ objective: 'Start Endpoint Test' });
+    expect(res.status).toBe(201);
+    const workItemId = res.body.id;
+    expect(res.body.lifecycleState).toBe('DRAFT');
+
+    // Owner legitimately dispatches/transitions it
+    res = await request(app)
+      .post(`/api/work-items/${workItemId}/start`).set('Origin', 'http://localhost:5173')
+      .set('Cookie', sessionCookie)
+      .send();
+    expect(res.status).toBe(200);
+    expect(res.body.lifecycleState).toBe('READY');
+
+    // Invalid/repeated transition handled safely (idempotent logic returns 200)
+    res = await request(app)
+      .post(`/api/work-items/${workItemId}/start`).set('Origin', 'http://localhost:5173')
+      .set('Cookie', sessionCookie)
+      .send();
+    expect(res.status).toBe(200);
+    expect(res.body.lifecycleState).toBe('READY');
+
+    // Cross-project dispatch denied
+    // Create new project to test cross-project isolation
+    const otherRes = await request(app)
+      .post('/api/auth/login').send({ bootstrapKey: 'test-owner-key' });
+    const otherCookie = otherRes.headers['set-cookie'][0];
+    const newProj = await request(app).post('/api/projects').set('Origin', 'http://localhost:5173').set('Cookie', otherCookie).send({ name: 'Other', slug: 'other' });
+    const newProjCookie = newProj.headers['set-cookie'][0];
+
+    const crossRes = await request(app)
+      .post(`/api/work-items/${workItemId}/start`).set('Origin', 'http://localhost:5173')
+      .set('Cookie', newProjCookie)
+      .send();
+    expect(crossRes.status).toBe(403);
+  });
+
   it('WORK ITEM: service Bearer token still creates work item', async () => {
     // Make sure project actually exists so fk doesn't fail
     const pId = randomUUID();
