@@ -127,7 +127,7 @@ export class MinimalWorkflowEngine {
         agentRunId: run.runId,
         agentAdapterId: 'codex-adapter', // Assuming adapter string for now, could be dynamic
       });
-    } catch {
+    } catch (e) { console.error('Engine Catch Error:', e);
       const failedAttempt = await this.store.transitionAttempt({
         attemptId,
         to: 'FAILED',
@@ -202,7 +202,7 @@ export class MinimalWorkflowEngine {
         requestedInputs: [],
         sideEffects: [],
       };
-    } catch {
+    } catch (e) { console.error('Engine Catch Error:', e);
       const failedAttempt = await this.store.transitionAttempt({
         attemptId,
         to: 'FAILED',

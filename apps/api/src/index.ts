@@ -139,6 +139,36 @@ app.post('/api/auth/login', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
+
+app.post('/api/auth/select-project', async (req, res) => {
+  const sessionData = req.signedCookies['co_session'];
+  if (!sessionData) return res.status(401).json({ error: 'Unauthorized' });
+  let payload;
+  try { payload = JSON.parse(sessionData); } catch { return res.status(401).json({ error: 'Malformed token' }); }
+  const nowTime = Date.now();
+  if (!payload || payload.version !== 1 || payload.issuedAt > nowTime || payload.expiresAt < nowTime) {
+    return res.status(401).json({ error: 'Invalid or expired session' });
+  }
+  if (payload.role !== 'OWNER') return res.status(403).json({ error: 'Forbidden' });
+
+  const { projectId } = req.body;
+  if (!projectId || typeof projectId !== 'string') return res.status(400).json({ error: 'Missing projectId' });
+
+  const project = await prisma.project.findUnique({ where: { id: projectId } });
+  if (!project || project.lifecycleState !== 'ACTIVE') return res.status(404).json({ error: 'Project not found' });
+
+  const newPayload = { ...payload, projectId };
+  res.cookie('co_session', JSON.stringify(newPayload), {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+    signed: true,
+    path: '/',
+    maxAge: 8 * 60 * 60 * 1000
+  });
+  res.status(200).json({ status: 'ok', projectId });
+});
+
 app.post('/api/auth/logout', (req, res) => {
   res.clearCookie('co_session', {
     httpOnly: true,

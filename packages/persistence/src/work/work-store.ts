@@ -37,6 +37,8 @@ export class WorkStore {
     const row = await this.prisma.workItem.create({ data: {
       id: workItem.id,
       projectId: workItem.projectId,
+      evidenceRequirements: workItem.evidenceRequirements,
+
       parentId: workItem.parentId,
       type: workItem.type,
       objective: workItem.objective,

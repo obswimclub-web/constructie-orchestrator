@@ -1,7 +1,7 @@
 import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { WorkStore } from '@co/persistence';
+import { WorkStore, PrismaEvidenceStore } from '@co/persistence';
 import { MinimalWorkflowEngine } from '@co/workflow';
 import { MockAgentAdapter } from '@co/agents';
 import { WorkerHost } from './worker.js';
@@ -26,8 +26,9 @@ export async function bootstrap() {
   // without requiring live LLM credentials, keeping the worker runtime genuinely
   // operational while real adapters are wired in subsequent phases.
   const adapter_ = new MockAgentAdapter('SUCCESS');
+  const evidenceStore = new PrismaEvidenceStore(prisma);
 
-  const host = new WorkerHost(prisma, workStore, engine, adapter_);
+  const host = new WorkerHost(prisma, workStore, engine, adapter_, evidenceStore);
 
   process.on('SIGTERM', async () => {
     console.log('[worker] SIGTERM received — initiating graceful shutdown');

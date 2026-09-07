@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { WorkStore } from '@co/persistence';
+import { WorkStore, PrismaEvidenceStore } from '@co/persistence';
 import { MinimalWorkflowEngine } from '@co/workflow';
 import { MockAgentAdapter } from '@co/agents';
 import { WorkerHost } from '../../apps/worker/src/worker';
@@ -41,7 +41,7 @@ describe('Full Worker Integration Dispatch (P12-R26)', () => {
     workStore = new WorkStore(prisma);
     engine = new MinimalWorkflowEngine(workStore);
     workerAdapter = new MockAgentAdapter('SUCCESS');
-    workerHost = new WorkerHost(prisma, workStore, engine, workerAdapter, { pollIntervalMs: 50 }); // poll every 50ms
+    workerHost = new WorkerHost(prisma, workStore, engine, workerAdapter, new PrismaEvidenceStore(prisma), { pollIntervalMs: 50 }); // poll every 50ms
   });
 
   afterAll(async () => {

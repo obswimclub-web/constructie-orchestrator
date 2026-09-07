@@ -67,6 +67,7 @@ model OutboxEvent {
 }
 
 model WorkItem {
+  evidenceRequirements Json @default("[\"AGENT_RESULT_VERIFICATION\"]") @map("evidence_requirements")
   id               String   @id @db.Uuid
   projectId        String   @map("project_id") @db.Uuid
   parentId         String?  @map("parent_id") @db.Uuid

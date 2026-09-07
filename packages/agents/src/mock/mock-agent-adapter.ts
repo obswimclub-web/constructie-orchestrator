@@ -1,3 +1,12 @@
+
+import crypto from 'node:crypto';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function __evId(base: string, claim: any): string {
+  const hash = crypto.createHash('sha256').update(base + ':' + String(claim)).digest('hex').slice(0, 32);
+  return hash.slice(0, 8) + '-' + hash.slice(8, 12) + '-4' + hash.slice(13, 16) + '-8' + hash.slice(17, 20) + '-' + hash.slice(20, 32);
+}
+
+
 import { randomUUID } from 'node:crypto';
 import {
   WorkPackageSchema,
@@ -71,14 +80,22 @@ export class MockAgentAdapter implements AgentAdapter {
     const status = this.initialStatus(this.scenario);
 
     let artifacts: ArtifactRef[] = [];
+    let evidenceList: EvidenceRef[] = [];
     if (this.scenario === 'SUCCESS') {
       artifacts = [
         {
-          artifactId: `artifact-${runId}`,
+          artifactId: runId,
           type: 'PATCH',
           ref: `mock://patch/${runId}`,
         },
       ];
+      const claim = 'Mock successful completion';
+      const evId = __evId(runId, claim);
+      const ev: EvidenceRef = { type: 'AGENT_RESULT', claimSupported: claim, sourceRef: 'MockAdapter', evidenceId: evId };
+      evidenceList = [ev];
+      // use evidence somehow so it's not unused
+      this.registry.runs.set(runId, { scenario: this.scenario, status, workPackage: Object.freeze(wp), artifacts, evidence: evidenceList, usage: { inputUnits: 10, outputUnits: 5, estimatedCost: 0, currency: 'USD', costStatus: 'UNKNOWN' } });
+      return { runId, status };
     }
 
     this.registry.runs.set(runId, {
@@ -86,7 +103,7 @@ export class MockAgentAdapter implements AgentAdapter {
       status,
       workPackage: Object.freeze(wp),
       artifacts,
-      evidence: [],
+      evidence: evidenceList,
       usage: {
         inputUnits: 10,
         outputUnits: 5,
@@ -113,7 +130,7 @@ export class MockAgentAdapter implements AgentAdapter {
       run.status = 'COMPLETED';
       run.artifacts = [
         {
-          artifactId: `artifact-${runRef.runId}`,
+          artifactId: runRef.runId,
           type: 'PATCH',
           ref: `mock://patch/${runRef.runId}`,
         },

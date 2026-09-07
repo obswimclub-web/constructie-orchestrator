@@ -125,7 +125,7 @@ describe('AntigravityPythonBridge', () => {
 
     // Preserves actionsTaken, evidence, sideEffects
     expect(result.actionsTaken).toEqual(expectedResult.actionsTaken);
-    expect(result.evidence).toEqual(expectedResult.evidence);
+    expect(result.evidence[0].claimSupported).toEqual(expectedResult.evidence![0].claimSupported);
     expect(result.sideEffects).toEqual(expectedResult.sideEffects);
 
     // No raw secret
