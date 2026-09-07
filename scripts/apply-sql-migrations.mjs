@@ -2,11 +2,32 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { URL } from 'node:url';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
   console.error('DATABASE_URL is required.');
   process.exit(2);
+}
+
+let parsedUrl;
+try {
+  parsedUrl = new URL(databaseUrl);
+} catch {
+  console.error('DATABASE_URL is invalid.');
+  process.exit(2);
+}
+
+const childEnv = { ...process.env };
+childEnv.PGHOST = parsedUrl.hostname;
+childEnv.PGPORT = parsedUrl.port || '5432';
+if (parsedUrl.username) childEnv.PGUSER = decodeURIComponent(parsedUrl.username);
+if (parsedUrl.password) childEnv.PGPASSWORD = decodeURIComponent(parsedUrl.password);
+childEnv.PGDATABASE = parsedUrl.pathname.replace(/^\//, '');
+
+const sslmode = parsedUrl.searchParams.get('sslmode');
+if (sslmode) {
+  childEnv.PGSSLMODE = sslmode;
 }
 
 const migrationFiles = [
@@ -28,9 +49,9 @@ for (const relative of migrationFiles) {
     process.exit(3);
   }
   console.log(`Applying ${relative}`);
-  const result = spawnSync('psql', [databaseUrl, '-v', 'ON_ERROR_STOP=1', '-f', file], {
+  const result = spawnSync('psql', ['-v', 'ON_ERROR_STOP=1', '-f', file], {
     stdio: 'inherit',
-    env: process.env,
+    env: childEnv,
   });
   if (result.error) {
     console.error(`Failed to execute psql for ${relative}:`, result.error.message);
