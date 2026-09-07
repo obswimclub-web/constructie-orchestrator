@@ -7,6 +7,8 @@ describe('P12 Cross-Site Auth & CORS Enforcement', () => {
   let app: Express;
   const originalEnv = process.env.NODE_ENV;
   const originalOrigin = process.env.WEB_ORIGIN;
+  const originalBootstrap = process.env.OWNER_BOOTSTRAP_KEY;
+  const originalSecret = process.env.SESSION_SECRET;
   let realValidCookie: string;
 
   beforeAll(async () => {
@@ -32,8 +34,10 @@ describe('P12 Cross-Site Auth & CORS Enforcement', () => {
   });
 
   afterAll(() => {
-    process.env.NODE_ENV = originalEnv;
-    process.env.WEB_ORIGIN = originalOrigin;
+    if (originalEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = originalEnv;
+    if (originalOrigin === undefined) delete process.env.WEB_ORIGIN; else process.env.WEB_ORIGIN = originalOrigin;
+    if (originalBootstrap === undefined) delete process.env.OWNER_BOOTSTRAP_KEY; else process.env.OWNER_BOOTSTRAP_KEY = originalBootstrap;
+    if (originalSecret === undefined) delete process.env.SESSION_SECRET; else process.env.SESSION_SECRET = originalSecret;
   });
 
   it('sets SameSite=None and Secure=true in production', async () => {
@@ -100,4 +104,37 @@ describe('P12 Cross-Site Auth & CORS Enforcement', () => {
       .send({ name: 'malformed', slug: 'malformed' });
     expect(res.status).toBe(401);
   });
+
+  it('fails closed on CSRF (POST with malformed cookie and missing Origin)', async () => {
+    const malformedCookie = 'co_session=just_garbage_without_signature';
+    const res = await request(app).post('/api/projects')
+      .set('Cookie', malformedCookie)
+      .send({ name: 'malformed', slug: 'malformed' });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain('missing origin for cookie session');
+  });
+
+  it('fails closed on CSRF (POST with tampered cookie and missing Origin)', async () => {
+    const tamperedCookie = realValidCookie + 'invalidated';
+    const res = await request(app).post('/api/projects')
+      .set('Cookie', tamperedCookie)
+      .send({ name: 'tampered', slug: 'tampered' });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain('missing origin for cookie session');
+  });
+
+  it('fails closed on CSRF (POST with expired cookie and missing Origin)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.advanceTimersByTime(30 * 24 * 60 * 60 * 1000 + 1000);
+      const res = await request(app).post('/api/projects')
+        .set('Cookie', realValidCookie)
+        .send({ name: 'expired', slug: 'expired' });
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain('missing origin for cookie session');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
 });

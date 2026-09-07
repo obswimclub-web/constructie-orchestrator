@@ -68,7 +68,8 @@ app.use((req, res, next) => {
       return res.status(403).json({ error: 'CSRF violation: invalid origin' });
     }
     // If no origin is provided, but they are trying to use a cookie session, block it.
-    if (!origin && req.signedCookies && req.signedCookies['co_session']) {
+    const hasSession = (req.cookies && req.cookies['co_session'] !== undefined) || (req.signedCookies && req.signedCookies['co_session'] !== undefined);
+    if (!origin && hasSession) {
       return res.status(403).json({ error: 'CSRF violation: missing origin for cookie session' });
     }
   }

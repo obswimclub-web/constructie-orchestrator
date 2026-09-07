@@ -40,7 +40,7 @@ describe('P12 Entry Flow API', () => {
   });
 
   it('SESSION: rejects expired session', async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ['Date'] });
     try {
       // 1. Emite o sesiune valida reala
       const loginRes = await request(app).post('/api/auth/login').send({ bootstrapKey: 'test-owner-key' });
