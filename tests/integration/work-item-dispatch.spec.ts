@@ -120,7 +120,11 @@ describe('Full Worker Integration Dispatch (P12-R26)', () => {
       .send({ objective: 'Terminal state test' });
     const wiId = createRes.body.id;
     
-    await prisma.workItem.update({ where: { id: wiId }, data: { lifecycleState: 'COMPLETED' } });
+    let wi = await workStore.getWorkItem(wiId);
+    wi = await workStore.transitionWorkItem({ workItemId: wiId, expectedRevision: wi.revision, to: 'READY' });
+    wi = await workStore.transitionWorkItem({ workItemId: wiId, expectedRevision: wi.revision, to: 'ASSIGNED' });
+    wi = await workStore.transitionWorkItem({ workItemId: wiId, expectedRevision: wi.revision, to: 'RUNNING' });
+    await workStore.transitionWorkItem({ workItemId: wiId, expectedRevision: wi.revision, to: 'COMPLETED' });
     
     const terminalRes = await request(app)
       .post(`/api/work-items/${wiId}/start`).set('Origin', 'http://localhost:5173')
@@ -141,4 +145,45 @@ describe('Full Worker Integration Dispatch (P12-R26)', () => {
       .send();
     expect(crossRes.status).toBe(403);
   });
+
+  it('Concurrent claims: multiple workers trying to process the same READY item prevent duplicate attempts', async () => {
+    // Create & dispatch item
+    const createRes = await request(app)
+      .post('/api/work-items').set('Origin', 'http://localhost:5173')
+      .set('Cookie', sessionCookie)
+      .send({ objective: 'Concurrent Test' });
+    const wiId = createRes.body.id;
+
+    await request(app)
+      .post(`/api/work-items/${wiId}/start`).set('Origin', 'http://localhost:5173')
+      .set('Cookie', sessionCookie)
+      .send();
+
+    // Create a slow mock agent adapter that waits a bit so both workers claim it if possible
+    class SlowMockAdapter extends MockAgentAdapter {
+      async execute(...args: Parameters<MockAgentAdapter['execute']>) {
+        await new Promise(r => setTimeout(r, 100));
+        return super.execute(args[0], args[1]);
+      }
+    }
+    const slowEngine1 = new MinimalWorkflowEngine(workStore);
+    const slowEngine2 = new MinimalWorkflowEngine(workStore);
+
+    const worker1 = new WorkerHost(prisma, workStore, slowEngine1, new SlowMockAdapter('SUCCESS'), { pollIntervalMs: 200 });
+    const worker2 = new WorkerHost(prisma, workStore, slowEngine2, new SlowMockAdapter('SUCCESS'), { pollIntervalMs: 200 });
+
+    worker1.start();
+    worker2.start();
+
+    // Give them time to both poll and process
+    await new Promise(r => setTimeout(r, 600));
+
+    await worker1.stop();
+    await worker2.stop();
+
+    const attempts = await prisma.attempt.findMany({ where: { workItemId: wiId } });
+    expect(attempts.length).toBe(1); // EXACTLY ONE ATTEMPT despite concurrent workers
+    expect(attempts[0].state).toBe('SUCCEEDED');
+  });
+
 });

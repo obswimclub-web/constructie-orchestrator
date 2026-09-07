@@ -346,8 +346,12 @@ app.post('/api/work-items', async (req, res) => {
 
 app.post('/api/work-items/:id/start', async (req, res) => {
   try {
-    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
+    const authContext = (req as unknown as AuthRequest).authContext;
+    const authProjectId = authContext.projectId;
     if (!authProjectId) return res.status(403).json({ error: 'Project context required' });
+    if (authContext.role !== 'OWNER') {
+      return res.status(403).json({ error: 'Only Owner can dispatch work items' });
+    }
 
     const workItemId = req.params.id;
     const { WorkStore } = await import('@co/persistence');

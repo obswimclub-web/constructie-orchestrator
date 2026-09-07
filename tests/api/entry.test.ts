@@ -188,7 +188,7 @@ describe('P12 Entry Flow API', () => {
   });
 
   
-  it('WORK ITEM: start explicitly transitions from DRAFT to READY and avoids duplicates', async () => {
+  it('WORK ITEM: start explicitly transitions from DRAFT to READY and avoids duplicates (OWNER allowed)', async () => {
     // Owner creates WorkItem -> initial DRAFT
     let res = await request(app)
       .post('/api/work-items').set('Origin', 'http://localhost:5173')
@@ -219,7 +219,7 @@ describe('P12 Entry Flow API', () => {
     const otherRes = await request(app)
       .post('/api/auth/login').send({ bootstrapKey: 'test-owner-key' });
     const otherCookie = otherRes.headers['set-cookie'][0];
-    const newProj = await request(app).post('/api/projects').set('Origin', 'http://localhost:5173').set('Cookie', otherCookie).send({ name: 'Other', slug: 'other' });
+    const newProj = await request(app).post('/api/projects').set('Origin', 'http://localhost:5173').set('Cookie', otherCookie).send({ name: 'Other', slug: 'other-' + randomUUID() });
     const newProjCookie = newProj.headers['set-cookie'][0];
 
     const crossRes = await request(app)
@@ -232,17 +232,26 @@ describe('P12 Entry Flow API', () => {
   it('WORK ITEM: service Bearer token still creates work item', async () => {
     // Make sure project actually exists so fk doesn't fail
     const pId = randomUUID();
-    const hmac = createHmac('sha256', 'test-secret');
-    hmac.update(pId);
-    const pToken = `${pId}.${hmac.digest('hex')}`;
     
-    await prisma.project.create({
-      data: { id: pId, name: 'Service Project', slug: pId, lifecycleState: 'ACTIVE', revision: 1 }
-    });
+    // Create project via API (as Owner) to avoid direct DB mutation in test
+    const ownerRes = await request(app)
+      .post('/api/auth/login').send({ bootstrapKey: 'test-owner-key' });
+    const ownerCookie = ownerRes.headers['set-cookie'][0];
+    const projRes = await request(app)
+      .post('/api/projects').set('Origin', 'http://localhost:5173')
+      .set('Cookie', ownerCookie)
+      .send({ name: 'Service Project', slug: pId });
+    // Use the actual project ID created
+    const createdProjectId = projRes.body.id;
+    // Remake token with the real created project ID
+    const newHmac = createHmac('sha256', 'test-secret');
+    newHmac.update(createdProjectId);
+    const newPToken = `${createdProjectId}.${newHmac.digest('hex')}`;
+
 
     const res = await request(app)
       .post('/api/work-items').set('Origin', 'http://localhost:5173')
-      .set('Authorization', `Bearer ${pToken}`)
+      .set('Authorization', `Bearer ${newPToken}`)
       .send({ objective: 'Service run' });
     
     expect(res.status).toBe(201);
@@ -252,6 +261,51 @@ describe('P12 Entry Flow API', () => {
   // ==========================================
   // LOGOUT
   // ==========================================
+
+  it('WORK ITEM: service Bearer token (AGENT) denied from dispatch', async () => {
+    // Make sure project actually exists so fk doesn't fail
+    const pId = randomUUID();
+    
+    // Create project via API (as Owner) to avoid direct DB mutation in test
+    const ownerRes = await request(app)
+      .post('/api/auth/login').send({ bootstrapKey: 'test-owner-key' });
+    const ownerCookie = ownerRes.headers['set-cookie'][0];
+    const projRes = await request(app)
+      .post('/api/projects').set('Origin', 'http://localhost:5173')
+      .set('Cookie', ownerCookie)
+      .send({ name: 'Service Project', slug: pId });
+    // Use the actual project ID created
+    const createdProjectId = projRes.body.id;
+    // Remake token with the real created project ID
+    const newHmac = createHmac('sha256', 'test-secret');
+    newHmac.update(createdProjectId);
+    const newPToken = `${createdProjectId}.${newHmac.digest('hex')}`;
+
+
+    const createRes = await request(app)
+      .post('/api/work-items').set('Origin', 'http://localhost:5173')
+      .set('Authorization', `Bearer ${newPToken}`)
+      .send({ objective: 'Service run to dispatch' });
+    
+    expect(createRes.status).toBe(201);
+    const wiId = createRes.body.id;
+
+    const dispatchRes = await request(app)
+      .post(`/api/work-items/${wiId}/start`).set('Origin', 'http://localhost:5173')
+      .set('Authorization', `Bearer ${newPToken}`)
+      .send();
+    
+
+    expect(dispatchRes.status).toBe(403);
+    expect(dispatchRes.body.error).toContain('Only Owner');
+
+    // Explicitly verify it did not modify WorkItem or create Attempt
+    const unchangedItem = await prisma.workItem.findUnique({ where: { id: wiId } });
+    expect(unchangedItem?.lifecycleState).toBe('DRAFT');
+    const unexpectedAttempts = await prisma.attempt.findMany({ where: { workItemId: wiId } });
+    expect(unexpectedAttempts.length).toBe(0);
+  });
+
   it('LOGOUT: clears cookie and safe to repeat', async () => {
     const res = await request(app)
       .post('/api/auth/logout').set('Origin', 'http://localhost:5173')
