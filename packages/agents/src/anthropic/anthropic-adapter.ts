@@ -1,3 +1,10 @@
+import crypto from 'node:crypto';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function __evId(base: string, claim: any): string {
+  const hash = crypto.createHash('sha256').update(base + ':' + String(claim)).digest('hex').slice(0, 32);
+  return hash.slice(0, 8) + '-' + hash.slice(8, 12) + '-4' + hash.slice(13, 16) + '-8' + hash.slice(17, 20) + '-' + hash.slice(20, 32);
+}
 /* eslint-disable */
 import { randomUUID } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
@@ -100,7 +107,7 @@ export class AnthropicAdapter implements AgentAdapter {
         evidence: [
           {
             type: 'error',
-            claimSupported: 'Missing API Key',
+            evidenceId: __evId(runId, 'Missing API Key'), claimSupported: 'Missing API Key',
             sourceRef: 'AnthropicAdapter',
           },
         ],
@@ -120,7 +127,7 @@ export class AnthropicAdapter implements AgentAdapter {
           status: 'FAILED',
           evidence: [
             ...(this.runs.get(runId)?.evidence ?? []),
-            { type: 'error', claimSupported: 'Timeout', sourceRef: 'AnthropicAdapter' },
+            { type: 'error', evidenceId: __evId(runId, 'Timeout'), claimSupported: 'Timeout', sourceRef: 'AnthropicAdapter' },
           ],
         });
       }, runtimeContext.timeBudgetMs);
@@ -172,7 +179,7 @@ export class AnthropicAdapter implements AgentAdapter {
           this.updateState(runId, {
             status: 'FAILED',
             evidence: [
-              { type: 'malformed_output', claimSupported: `Parse error: ${parseErr.message}`, sourceRef: 'AnthropicAdapter' },
+              { type: 'malformed_output', evidenceId: __evId(runId, `Parse error: ${parseErr.message}`), claimSupported: `Parse error: ${parseErr.message}`, sourceRef: 'AnthropicAdapter' },
             ],
           });
           return;
@@ -186,7 +193,7 @@ export class AnthropicAdapter implements AgentAdapter {
           this.updateState(runId, {
             status: 'FAILED',
             evidence: [
-              { type: 'malformed_output', claimSupported: 'Model returned malformed JSON without valid code block', sourceRef: 'AnthropicAdapter' },
+              { type: 'malformed_output', evidenceId: __evId(runId, 'Model returned malformed JSON without valid code block'), claimSupported: 'Model returned malformed JSON without valid code block', sourceRef: 'AnthropicAdapter' },
             ],
           });
           return;
@@ -218,7 +225,7 @@ export class AnthropicAdapter implements AgentAdapter {
             runStatus = 'FAILED';
             denialEvidence.push({
               type: 'tool_denial',
-              claimSupported: result.summary,
+              evidenceId: __evId(runId, result.summary), claimSupported: result.summary,
               sourceRef: toolRequest.requestId,
             });
           } else if (result.status === 'FAILED' || result.status === 'TIMED_OUT' || result.status === 'UNKNOWN') {
@@ -250,7 +257,7 @@ export class AnthropicAdapter implements AgentAdapter {
           evidence: [
             {
               type: 'model',
-              claimSupported: response.model,
+              evidenceId: __evId(runId, response.model), claimSupported: response.model,
               sourceRef: response.id,
             },
             ...denialEvidence,
@@ -271,7 +278,7 @@ export class AnthropicAdapter implements AgentAdapter {
         if (status === 429) {
           retryEvidence.push({
             type: 'retry',
-            claimSupported: `Rate limited (429) on attempt ${attempt + 1}`,
+            evidenceId: __evId(runId, `Rate limited (429) on attempt ${attempt + 1}`), claimSupported: `Rate limited (429) on attempt ${attempt + 1}`,
             sourceRef: 'AnthropicAdapter',
           });
           if (attempt < MAX_RETRIES - 1) {
@@ -286,7 +293,7 @@ export class AnthropicAdapter implements AgentAdapter {
         } else if (status >= 500) {
           retryEvidence.push({
             type: 'retry',
-            claimSupported: `Server error (${status}) on attempt ${attempt + 1}`,
+            evidenceId: __evId(runId, `Server error (${status}) on attempt ${attempt + 1}`), claimSupported: `Server error (${status}) on attempt ${attempt + 1}`,
             sourceRef: 'AnthropicAdapter',
           });
           if (attempt < MAX_RETRIES - 1) {
