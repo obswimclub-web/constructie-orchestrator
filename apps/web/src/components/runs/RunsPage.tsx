@@ -54,8 +54,8 @@ export function RunsPage() {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-slate-900">Execution Runs</h2>
         <div className="flex gap-2">
-          <button className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors">
-            Filter
+          <button disabled title="Coming later" className="bg-slate-50 border border-slate-200 text-slate-400 px-4 py-2 rounded-md text-sm font-medium cursor-not-allowed">
+            Filter (Coming later)
           </button>
           
           <button onClick={() => setIsStarting(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">

@@ -11,8 +11,8 @@ export function TaskGraphPage() {
           <p className="text-slate-500">Interactive node-based workflow visualization</p>
         </div>
         <div className="flex gap-2">
-          <button className="bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors flex items-center gap-2">
-            <Settings2 className="w-4 h-4" /> Layout
+          <button disabled title="Coming later" className="bg-slate-50 border border-slate-200 text-slate-400 px-3 py-1.5 rounded-md text-sm font-medium cursor-not-allowed flex items-center gap-2">
+            <Settings2 className="w-4 h-4" /> Layout (Coming later)
           </button>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { useFetch } from '../../data/hooks';
 import { fetchWorkspaceState } from '../../data/api';
 import { Target, CheckCircle2, Circle, AlertCircle } from 'lucide-react';
 import { DataState } from '../ui/DataState';
+import { Link } from 'react-router-dom';
 
 export function WorkspacePage() {
   const { data: state, loading, error, isStale, isDegraded } = useFetch(fetchWorkspaceState);
@@ -78,15 +79,15 @@ export function WorkspacePage() {
               <Card>
                 <CardHeader title="Quick Links" />
                 <CardContent className="p-4 flex flex-col gap-2">
-                  <button className="text-left px-4 py-2 hover:bg-slate-50 rounded-md text-sm font-medium text-slate-700 border border-slate-100">
+                  <Link to="/evidence" className="text-left px-4 py-2 hover:bg-slate-50 rounded-md text-sm font-medium text-slate-700 border border-slate-100 block">
                     View Evidence Pack
-                  </button>
-                  <button className="text-left px-4 py-2 hover:bg-slate-50 rounded-md text-sm font-medium text-slate-700 border border-slate-100">
+                  </Link>
+                  <Link to="/logs" className="text-left px-4 py-2 hover:bg-slate-50 rounded-md text-sm font-medium text-slate-700 border border-slate-100 block">
                     View Qualification Logs
-                  </button>
-                  <button className="text-left px-4 py-2 hover:bg-slate-50 rounded-md text-sm font-medium text-slate-700 border border-slate-100">
+                  </Link>
+                  <Link to="/agents" className="text-left px-4 py-2 hover:bg-slate-50 rounded-md text-sm font-medium text-slate-700 border border-slate-100 block">
                     Agent Assignments
-                  </button>
+                  </Link>
                 </CardContent>
               </Card>
             </div>

@@ -3,8 +3,9 @@ import { Card, CardHeader, CardContent } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { useFetch } from '../../data/hooks';
 import { fetchApprovals, decideApproval } from '../../data/api';
-import { CheckSquare, ShieldCheck, XCircle, Search, Loader2, Clock, User, Link } from 'lucide-react';
+import { CheckSquare, ShieldCheck, XCircle, Search, Loader2, Clock, User, Link as LinkIcon } from 'lucide-react';
 import { DataState } from '../ui/DataState';
+import { Link } from 'react-router-dom';
 import type { Approval } from '../../types';
 
 function ApprovalStatusBadge({ status }: { status: Approval['status'] }) {
@@ -101,7 +102,7 @@ export function ApprovalsPage() {
                         <ul className="space-y-1">
                           {approval.evidenceRefs.map((ref, i) => (
                             <li key={i} className="flex items-start gap-2 text-sm">
-                              <Link className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                              <LinkIcon className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
                               <span className="text-slate-700">{ref.claim}</span>
                               <span className="text-slate-400 font-mono text-xs">[{ref.sourceRef}]</span>
                             </li>
@@ -157,9 +158,9 @@ export function ApprovalsPage() {
                       >
                         {processing[approval.id] ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />} Reject
                       </button>
-                      <button className="w-full py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-md text-sm font-semibold flex items-center justify-center gap-2 transition-colors">
+                      <Link to="/evidence" className="w-full py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-md text-sm font-semibold flex items-center justify-center gap-2 transition-colors">
                         <ShieldCheck className="w-4 h-4" /> View Evidence Pack
-                      </button>
+                      </Link>
                     </div>
                   )}
                 </div>
