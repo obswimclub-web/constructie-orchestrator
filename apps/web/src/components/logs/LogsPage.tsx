@@ -16,11 +16,11 @@ export function LogsPage() {
           <p className="text-slate-500">Raw execution telemetry and streams</p>
         </div>
         <div className="flex gap-2">
-          <button className="bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors flex items-center gap-2">
-            <Filter className="w-4 h-4" /> Filter
+          <button disabled title="Coming later" className="bg-slate-50 border border-slate-200 text-slate-400 px-3 py-1.5 rounded-md text-sm font-medium cursor-not-allowed flex items-center gap-2">
+            <Filter className="w-4 h-4" /> Filter (Coming later)
           </button>
-          <button className="bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors flex items-center gap-2">
-            <Download className="w-4 h-4" /> Export
+          <button disabled title="Coming later" className="bg-slate-50 border border-slate-200 text-slate-400 px-3 py-1.5 rounded-md text-sm font-medium cursor-not-allowed flex items-center gap-2">
+            <Download className="w-4 h-4" /> Export (Coming later)
           </button>
         </div>
       </div>

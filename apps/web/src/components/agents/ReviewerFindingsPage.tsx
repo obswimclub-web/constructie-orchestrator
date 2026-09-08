@@ -52,12 +52,12 @@ export function ReviewerFindingsPage() {
                   </div>
                   
                   <div className="flex flex-row md:flex-col gap-2 min-w-[160px]">
-                    <button disabled className="w-full bg-slate-50 border border-slate-200 text-slate-400 px-3 py-1.5 rounded-md text-sm font-medium cursor-not-allowed">
-                      View Run
+                    <button disabled className="w-full bg-slate-50 border border-slate-200 text-slate-400 px-3 py-1.5 rounded-md text-sm font-medium cursor-not-allowed" title="Coming later">
+                      View Run (Coming later)
                     </button>
                     {finding.verdict === 'FAIL' && !finding.repaired && (
-                      <button disabled className="w-full bg-slate-100 text-slate-400 px-3 py-1.5 rounded-md text-sm font-medium cursor-not-allowed flex items-center justify-center gap-1.5">
-                        <AlertTriangle className="w-4 h-4" /> Autorepair
+                      <button disabled className="w-full bg-slate-100 text-slate-400 px-3 py-1.5 rounded-md text-sm font-medium cursor-not-allowed flex items-center justify-center gap-1.5" title="Coming later">
+                        <AlertTriangle className="w-4 h-4" /> Autorepair (Coming later)
                       </button>
                     )}
                     {finding.repaired && (

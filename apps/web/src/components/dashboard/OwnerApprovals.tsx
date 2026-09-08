@@ -4,7 +4,8 @@ import { Badge } from '../ui/Badge';
 import { useFetch } from '../../data/hooks';
 import { fetchApprovals, decideApproval } from '../../data/api';
 import { DataState } from '../ui/DataState';
-import { Loader2, Clock, Link } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Loader2, Clock, Link as LinkIcon } from 'lucide-react';
 import type { Approval } from '../../types';
 
 function statusVariant(status: Approval['status']): 'success' | 'danger' | 'warning' | 'neutral' {
@@ -67,7 +68,7 @@ export function OwnerApprovals() {
                   <div className="space-y-1">
                     {approval.evidenceRefs.map((ref, i) => (
                       <p key={i} className="text-xs text-amber-700 flex items-center gap-1">
-                        <Link className="w-3 h-3 shrink-0" />
+                        <LinkIcon className="w-3 h-3 shrink-0" />
                         {ref.claim}
                       </p>
                     ))}
@@ -105,9 +106,9 @@ export function OwnerApprovals() {
                     >
                       {processing[approval.id] && <Loader2 className="w-3 h-3 animate-spin" />} Reject
                     </button>
-                    <button className="px-4 py-1.5 bg-white border border-amber-200 text-amber-800 rounded-md text-sm font-semibold hover:bg-amber-100 transition-colors">
+                    <Link to="/evidence" className="px-4 py-1.5 bg-white border border-amber-200 text-amber-800 rounded-md text-sm font-semibold hover:bg-amber-100 transition-colors block text-center">
                       Evidence
-                    </button>
+                    </Link>
                   </div>
                 )}
               </div>

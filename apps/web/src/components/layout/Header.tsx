@@ -1,4 +1,4 @@
-import { Search, Bell, UserCircle, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { Search, UserCircle, ShieldCheck, AlertTriangle } from 'lucide-react';
 
 export function Header() {
   return (
@@ -27,15 +27,12 @@ export function Header() {
           />
         </div>
         
-        <button className="text-slate-500 hover:text-slate-700 relative">
-          <Bell className="w-5 h-5" />
-          <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full"></span>
-        </button>
         
-        <button className="text-slate-500 hover:text-slate-700 flex items-center gap-2">
+        
+        <div className="text-slate-500 flex items-center gap-2">
           <UserCircle className="w-6 h-6" />
           <span className="text-sm font-medium text-slate-700">Owner</span>
-        </button>
+        </div>
       </div>
     </header>
   );

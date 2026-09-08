@@ -12,8 +12,8 @@ export function AgentsPage() {
     <div className="max-w-[1600px] mx-auto pb-10 flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-slate-900">Agent Fleet</h2>
-        <button className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors">
-          Configure Providers
+        <button disabled title="Coming later" className="bg-slate-50 border border-slate-200 text-slate-400 px-4 py-2 rounded-md text-sm font-medium cursor-not-allowed">
+          Configure Providers (Coming later)
         </button>
       </div>
 
