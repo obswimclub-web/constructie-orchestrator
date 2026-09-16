@@ -1,5 +1,4 @@
-import type { SealedReconciliationOutcome, RunCoordinator } from '@co/workflow';
-import type { TrustedReconciliationIssuer } from '@co/workflow/dist/run-coordinator.js';
+import type { SealedReconciliationOutcome, RunCoordinator, TrustedReconciliationIssuer } from '@co/workflow';
 import type { ActionRequest } from '@co/policy';
 
 export interface IndependentVerificationContext {

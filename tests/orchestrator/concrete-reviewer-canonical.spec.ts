@@ -211,18 +211,16 @@ describe('SealedReconciliationOutcome — trusted reconciliation enforcement', (
       .rejects.toThrow(/Untrusted reconciliation outcome/);
   });
 
-  it('public @co/workflow surface does not export reconciliation constructor, issuer, or factory', async () => {
+  it('public @co/workflow surface does not export reconciliation internal factories', async () => {
     const Workflow = await import('@co/workflow');
     const publicKeys = Object.keys(Workflow);
 
-    // Constructor value absent — no runtime class to instantiate
-    expect('SealedReconciliationOutcome' in Workflow).toBe(false);
-    // Issuer absent
-    expect('TrustedReconciliationIssuer' in Workflow).toBe(false);
+    // Issuer is now publicly exported to avoid dist imports
+    expect('TrustedReconciliationIssuer' in Workflow).toBe(true);
     // No public factory/mint function
     expect('isReconciliationOutcome' in Workflow).toBe(false);
     expect('createSealedReconciliationOutcome' in Workflow).toBe(false);
-    expect(publicKeys.filter(k => /[Rr]econcil/i.test(k))).toEqual([]);
+    expect(publicKeys.filter(k => /[Rr]econcil/i.test(k))).toEqual(['TrustedReconciliationIssuer']);
 
     // Canonical control-plane path (direct module import) can still access everything
     const Internal = await import('../../packages/workflow/src/run-coordinator.js');
