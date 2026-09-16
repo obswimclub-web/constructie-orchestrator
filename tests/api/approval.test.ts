@@ -538,5 +538,35 @@ describe('P6 — Approval Authority Subsystem', () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual([]);
     });
+
+    it('Test Case 5: Real OWNER Session Flow', async () => {
+      // 1. Authenticate using OWNER_BOOTSTRAP_KEY
+      const loginRes = await request(app)
+        .post('/api/auth/login')
+        .set('Origin', 'http://localhost:5173')
+        .send({ bootstrapKey: 'test-owner-key' });
+      expect(loginRes.status).toBe(200);
+      const initialCookie = loginRes.headers['set-cookie'][0];
+
+      // 2. Select Project A
+      const selectRes = await request(app)
+        .post('/api/auth/select-project')
+        .set('Origin', 'http://localhost:5173')
+        .set('Cookie', initialCookie)
+        .send({ projectId: projAId });
+      expect(selectRes.status).toBe(200);
+      const projACookie = selectRes.headers['set-cookie'][0];
+
+      // 3 & 4. Call GET /api/approvals
+      const res = await request(app)
+        .get('/api/approvals')
+        .set('Cookie', projACookie);
+      expect(res.status).toBe(200);
+
+      // 5 & 6. Assert Project A approvals are visible, Project B is NOT visible
+      const ids = res.body.map((a: { id: string }) => a.id);
+      expect(ids).toContain(approvalA1);
+      expect(ids).not.toContain(approvalB1);
+    });
   });
 });
