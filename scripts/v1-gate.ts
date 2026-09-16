@@ -7,9 +7,20 @@ const rootDir = process.cwd();
 async function check() {
   console.log('Running Final Completion Gate (Semantic Evidence)...');
   
-  const gitStatus = execSync('git status --short --untracked-files=all | grep -v uc-evidence.json | grep -v test-results.json | grep -v evidence-report.md').toString().trim();
-  if (gitStatus.length > 0) {
-    const lines = gitStatus.split('\n');
+  const rawStatus = execSync('git status --short --untracked-files=all', { encoding: 'utf-8' }).trim();
+  const ignoredFiles = ['uc-evidence.json', 'test-results.json', 'evidence-report.md'];
+  
+  const lines = rawStatus.split('\n')
+    .filter(l => l.trim() !== '')
+    .filter(l => {
+      const filePath = l.substring(3).trim();
+      const unquotedPath = filePath.startsWith('"') && filePath.endsWith('"') 
+        ? filePath.substring(1, filePath.length - 1) 
+        : filePath;
+      return !ignoredFiles.includes(unquotedPath);
+    });
+
+  if (lines.length > 0) {
     const hasUnstagedOrUntracked = lines.some(l => !l.startsWith('M ') && !l.startsWith('A ') && !l.startsWith('D '));
     const hasStaged = lines.some(l => l.startsWith('M ') || l.startsWith('A ') || l.startsWith('D '));
     if (hasUnstagedOrUntracked) console.warn('Unstaged changes exist.');
