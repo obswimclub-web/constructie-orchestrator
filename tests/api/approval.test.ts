@@ -470,4 +470,103 @@ describe('P6 — Approval Authority Subsystem', () => {
     const auditEvents = await prisma.approvalAuditEvent.findMany({ where: { approvalId } });
     expect(auditEvents.map(e => e.eventType)).toContain('POST_ACTION_VERIFIED');
   });
+  describe('F-006 Regression: Project Isolation in GET /api/approvals', () => {
+    let projAId: string;
+    let projBId: string;
+    let approvalA1: string;
+    let approvalA2: string;
+    let approvalB1: string;
+
+    beforeAll(async () => {
+      const projA = await prisma.project.create({
+        data: { id: randomUUID(), slug: 'f006-a', name: 'Proj A', lifecycleState: 'ACTIVE', revision: 1 },
+      });
+      projAId = projA.id;
+
+      const projB = await prisma.project.create({
+        data: { id: randomUUID(), slug: 'f006-b', name: 'Proj B', lifecycleState: 'ACTIVE', revision: 1 },
+      });
+      projBId = projB.id;
+
+      // Create Approval A1 -> Proj A (PENDING)
+      const resA1 = await request(app).post('/api/approvals')
+        .set('Authorization', `Bearer ${generateToken(projAId)}`)
+        .send({ projectId: projAId, gateKind: 'COMMIT', scope: { kind: 'COMMIT', paths: ['a1'], message: 'a1' }, requestedBy: 'SYSTEM' });
+      approvalA1 = resA1.body.id;
+
+      // Create Approval A2 -> Proj A (APPROVED)
+      const resA2 = await request(app).post('/api/approvals')
+        .set('Authorization', `Bearer ${generateToken(projAId)}`)
+        .send({ projectId: projAId, gateKind: 'COMMIT', scope: { kind: 'COMMIT', paths: ['a2'], message: 'a2' }, requestedBy: 'SYSTEM' });
+      approvalA2 = resA2.body.id;
+      await request(app).post(`/api/approvals/${approvalA2}/decide`)
+        .set('Authorization', `Bearer ${generateToken(projAId)}`)
+        .send({ decision: 'APPROVED' });
+
+      // Create Approval B1 -> Proj B (PENDING)
+      const resB1 = await request(app).post('/api/approvals')
+        .set('Authorization', `Bearer ${generateToken(projBId)}`)
+        .send({ projectId: projBId, gateKind: 'COMMIT', scope: { kind: 'COMMIT', paths: ['b1'], message: 'b1' }, requestedBy: 'SYSTEM' });
+      approvalB1 = resB1.body.id;
+    });
+
+    it('Test Case 1 & 2: Agent/Owner isolation - GET /api/approvals from Proj A should not see Proj B', async () => {
+      const res = await request(app).get('/api/approvals')
+        .set('Authorization', `Bearer ${generateToken(projAId)}`);
+      
+      expect(res.status).toBe(200);
+      const ids = res.body.map((a: { id: string }) => a.id);
+      expect(ids).toContain(approvalA1);
+      expect(ids).not.toContain(approvalB1);
+    });
+
+    it('Test Case 3: Status filter + isolation', async () => {
+      const res = await request(app).get('/api/approvals?status=APPROVED')
+        .set('Authorization', `Bearer ${generateToken(projAId)}`);
+      
+      expect(res.status).toBe(200);
+      const ids = res.body.map((a: { id: string }) => a.id);
+      expect(ids).toContain(approvalA2);
+      expect(ids).not.toContain(approvalA1);
+      expect(ids).not.toContain(approvalB1);
+    });
+
+    it('Test Case 4: Empty project result', async () => {
+      const res = await request(app).get('/api/approvals?status=APPROVED')
+        .set('Authorization', `Bearer ${generateToken(projBId)}`);
+      
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([]);
+    });
+
+    it('Test Case 5: Real OWNER Session Flow', async () => {
+      // 1. Authenticate using OWNER_BOOTSTRAP_KEY
+      const loginRes = await request(app)
+        .post('/api/auth/login')
+        .set('Origin', 'http://localhost:5173')
+        .send({ bootstrapKey: 'test-owner-key' });
+      expect(loginRes.status).toBe(200);
+      const initialCookie = loginRes.headers['set-cookie'][0];
+
+      // 2. Select Project A
+      const selectRes = await request(app)
+        .post('/api/auth/select-project')
+        .set('Origin', 'http://localhost:5173')
+        .set('Cookie', initialCookie)
+        .send({ projectId: projAId });
+      expect(selectRes.status).toBe(200);
+      const projACookie = selectRes.headers['set-cookie'][0];
+
+      // 3 & 4. Call GET /api/approvals
+      const res = await request(app)
+        .get('/api/approvals')
+        .set('Cookie', projACookie);
+      expect(res.status).toBe(200);
+
+      // 5 & 6. Assert Project A approvals are visible, Project B is NOT visible
+      const ids = res.body.map((a: { id: string }) => a.id);
+      expect(ids).toContain(approvalA1);
+      expect(ids).not.toContain(approvalB1);
+    });
+  });
 });

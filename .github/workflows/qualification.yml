@@ -95,3 +95,6 @@ jobs:
 
       - name: Architecture invariants
         run: pnpm arch:check
+
+      - name: Semantic V1 gate
+        run: pnpm v1:gate

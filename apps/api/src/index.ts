@@ -598,9 +598,10 @@ function mapApprovalToDto(a: {
 // List pending approvals
 app.get('/api/approvals', async (req, res) => {
   try {
+    const authProjectId = (req as unknown as AuthRequest).authContext.projectId;
     const status = (req.query.status as string) || 'PENDING';
     const approvals = await prisma.approval.findMany({
-      where: { status },
+      where: { status, projectId: authProjectId },
       orderBy: { requestedAt: 'desc' },
     });
     res.json(approvals.map(mapApprovalToDto));
