@@ -11,5 +11,6 @@ export {
   defaultWaitPolicy,
   classifyStatus,
   RunCoordinator,
-  InMemoryEventLedger
+  InMemoryEventLedger,
+  TrustedReconciliationIssuer
 } from './run-coordinator.js';

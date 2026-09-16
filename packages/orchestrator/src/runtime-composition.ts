@@ -1,8 +1,6 @@
 import { StructuredGitAdapter, QualificationAdapter, OutputRedactor } from '@co/tools';
 import { ConcreteStructuredReviewer } from './concrete-structured-reviewer.js';
-import { RunCoordinator } from '@co/workflow';
-// Import TrustedReconciliationIssuer directly from the module since it's not exported in the public index
-import { TrustedReconciliationIssuer } from '@co/workflow/dist/run-coordinator.js';
+import { RunCoordinator, TrustedReconciliationIssuer } from '@co/workflow';
 import { CodexAdapter, AntigravityPythonBridge, OpenAIReviewerAdapter } from '@co/agents';
 import {
   ActionClassifyingPolicyEngine,
