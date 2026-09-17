@@ -41,7 +41,7 @@ model ProjectEvent {
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  @@unique([aggregateId, aggregateRevision, eventType])
+  @@unique([aggregateId, aggregateRevision], name: "project_events_aggregate_revision_unique")
   @@index([projectId, persistedAt])
   @@index([correlationId])
   @@map("project_events")
