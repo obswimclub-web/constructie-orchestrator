@@ -6,6 +6,7 @@ import {
   assertWorkItemTransition,
   type Attempt,
   type AttemptState,
+  type NewAttempt,
   type WorkItem,
   type WorkItemLifecycleState,
 } from '@co/domain';
@@ -14,13 +15,16 @@ import { MinimalWorkflowEngine, type WorkflowWorkStore } from '../src/index.js';
 class InMemoryWorkStore implements WorkflowWorkStore {
   constructor(public workItem: WorkItem) {}
   attempt: Attempt | null = null;
+  private attemptCounter = 0;
 
-  async startAttempt(input: { attempt: Attempt; expectedWorkItemRevision: number }) {
+  async startAttempt(input: { attempt: NewAttempt; expectedWorkItemRevision: number }) {
     if (this.workItem.revision !== input.expectedWorkItemRevision) throw new Error('stale');
     assertWorkItemTransition(this.workItem.lifecycleState, 'ASSIGNED');
-    this.attempt = input.attempt;
+    this.attemptCounter++;
+    const attempt: Attempt = { ...input.attempt, attemptNumber: this.attemptCounter };
+    this.attempt = attempt;
     this.workItem = { ...this.workItem, lifecycleState: 'ASSIGNED', currentAttemptId: input.attempt.id, revision: this.workItem.revision + 1 };
-    return { workItem: this.workItem, attempt: input.attempt };
+    return { workItem: this.workItem, attempt };
   }
 
   async bindAgentRun(input: { attemptId: string; agentRunId: string; agentAdapterId: string }) {

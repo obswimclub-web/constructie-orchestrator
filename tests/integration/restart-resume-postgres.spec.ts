@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { MockAgentAdapter, MockAgentRunRegistry } from '@co/agents';
 import { WORK_PACKAGE_SCHEMA_VERSION, type WorkPackage } from '@co/contracts';
-import { createProject, createWorkItem, type Attempt } from '@co/domain';
+import { createProject, createWorkItem } from '@co/domain';
 import { ProjectStore, WorkStore } from '@co/persistence';
 import { ResumeCoordinator } from '@co/workflow';
 
@@ -98,12 +98,11 @@ describe('BOOT Qualification — PostgreSQL restart/resume proof', () => {
       stopConditions: [],
     };
 
-    const initialAttempt: Attempt = {
+    const initialAttempt = {
       id: attemptId,
       projectId,
       workItemId,
-      attemptNumber: 1,
-      state: 'NOT_STARTED',
+      state: 'NOT_STARTED' as const,
       workPackageVersion: 1,
       agentRunId: null,
       agentAdapterId: null,

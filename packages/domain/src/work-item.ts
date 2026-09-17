@@ -63,6 +63,12 @@ export interface Attempt {
   readonly updatedAt: Date;
 }
 
+/**
+ * Attempt candidate without attemptNumber — persistence allocates the
+ * durable ordinal inside the authoritative transaction (F-011).
+ */
+export type NewAttempt = Omit<Attempt, 'attemptNumber'>;
+
 const WORK_ITEM_TRANSITIONS: Readonly<Record<WorkItemLifecycleState, readonly WorkItemLifecycleState[]>> = {
   DRAFT: ["READY", "CANCELLED", "SUPERSEDED"],
   READY: ["QUEUED", "ASSIGNED", "BLOCKED", "WAITING", "CANCELLED", "SUPERSEDED"],
