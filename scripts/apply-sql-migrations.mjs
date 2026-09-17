@@ -40,6 +40,7 @@ const migrationFiles = [
   'packages/persistence/prisma/migrations/0007_p9_evidence_lineage/migration.sql',
   'packages/persistence/prisma/migrations/0008_p9_s3_observability/migration.sql',
   'packages/persistence/prisma/migrations/0009_r60_evidence_reqs/migration.sql',
+  'packages/persistence/prisma/migrations/0010_project_event_revision_uniqueness/migration.sql',
 ];
 
 for (const relative of migrationFiles) {
