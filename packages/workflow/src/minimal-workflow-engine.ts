@@ -9,13 +9,14 @@ import type {
 import type {
   Attempt,
   AttemptState,
+  NewAttempt,
   WorkItem,
   WorkItemLifecycleState,
 } from '@co/domain';
 
 export interface WorkflowWorkStore {
   startAttempt(input: {
-    attempt: Attempt;
+    attempt: NewAttempt;
     expectedWorkItemRevision: number;
   }): Promise<{ workItem: WorkItem; attempt: Attempt }>;
 
@@ -84,11 +85,10 @@ export class MinimalWorkflowEngine {
 
     const now = input.now ?? new Date();
     const attemptId = randomUUID();
-    const attempt: Attempt = {
+    const attempt: NewAttempt = {
       id: attemptId,
       projectId: input.workItem.projectId,
       workItemId: input.workItem.id,
-      attemptNumber: 1,
       state: 'NOT_STARTED',
       workPackageVersion: input.workPackage.version,
       agentRunId: null,

@@ -159,7 +159,6 @@ describe('Full Worker Integration Dispatch (P12-R26)', () => {
       id: randomUUID(),
       projectId: wi.projectId,
       workItemId: wi.id,
-      attemptNumber: 1,
       state: 'NOT_STARTED' as const,
       workPackageVersion: 1,
       agentRunId: 'test-run',

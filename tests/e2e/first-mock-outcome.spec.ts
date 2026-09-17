@@ -16,6 +16,7 @@ import {
   isActiveAttemptState,
   type Attempt,
   type AttemptState,
+  type NewAttempt,
   type WorkItem,
   type WorkItemLifecycleState,
 } from '@co/domain';
@@ -39,12 +40,13 @@ class InMemoryWorkStore implements WorkflowWorkStore {
   put(workItem: WorkItem): void { this.work.set(workItem.id, workItem); }
   get(workItemId: string): WorkItem { const item = this.work.get(workItemId); if (!item) throw new Error('work missing'); return item; }
 
-  async startAttempt(input: { attempt: Attempt; expectedWorkItemRevision: number }): Promise<{ workItem: WorkItem; attempt: Attempt }> {
+  async startAttempt(input: { attempt: NewAttempt; expectedWorkItemRevision: number }): Promise<{ workItem: WorkItem; attempt: Attempt }> {
     const current = this.get(input.attempt.workItemId);
     if (current.revision !== input.expectedWorkItemRevision) throw new Error('revision conflict');
     if ([...this.attempts.values()].some((a) => a.workItemId === current.id && isActiveAttemptState(a.state))) throw new Error('active attempt exists');
     assertWorkItemTransition(current.lifecycleState, 'ASSIGNED');
-    const attempt = { ...input.attempt };
+    const maxNum = Math.max(0, ...[...this.attempts.values()].filter(a => a.workItemId === current.id).map(a => a.attemptNumber));
+    const attempt: Attempt = { ...input.attempt, attemptNumber: maxNum + 1 };
     this.attempts.set(attempt.id, attempt);
     const workItem = { ...current, lifecycleState: 'ASSIGNED' as const, revision: current.revision + 1, currentAttemptId: attempt.id };
     this.put(workItem);

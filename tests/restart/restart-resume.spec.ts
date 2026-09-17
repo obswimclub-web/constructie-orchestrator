@@ -80,7 +80,7 @@ describe('BOOT-010 restart / resume proof', () => {
     let currentWorkItemState = 'READY';
 
     const store = {
-      startAttempt: async (input: { attempt: import('@co/domain').Attempt; expectedWorkItemRevision: number }) => { currentAttempt = input.attempt; return { workItem: mockWorkItem, attempt: input.attempt }; },
+      startAttempt: async (input: { attempt: import('@co/domain').NewAttempt; expectedWorkItemRevision: number }) => { currentAttempt = { ...input.attempt, attemptNumber: 1 } as import('@co/domain').Attempt; return { workItem: mockWorkItem, attempt: currentAttempt }; },
       transitionAttempt: async (input: { attemptId: string; to: import('@co/domain').AttemptState }) => { currentAttempt = { ...currentAttempt, state: input.to }; return currentAttempt; },
       bindAgentRun: async (input: { attemptId: string; agentRunId: string; agentAdapterId: string }) => { currentAttempt = { ...currentAttempt, agentRunId: input.agentRunId, agentAdapterId: input.agentAdapterId }; return currentAttempt; },
       transitionWorkItem: async (input: { workItemId: string; expectedRevision: number; to: import('@co/domain').WorkItemLifecycleState }) => { currentWorkItemState = input.to; return { ...mockWorkItem, lifecycleState: input.to as import('@co/domain').WorkItemLifecycleState }; }

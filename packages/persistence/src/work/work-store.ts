@@ -7,6 +7,7 @@ import {
   isActiveAttemptState,
   type Attempt,
   type AttemptState,
+  type NewAttempt,
   type WorkItem,
   type WorkItemLifecycleState,
 } from "@co/domain";
@@ -66,7 +67,7 @@ export class WorkStore {
     });
   }
 
-  public async startAttempt(input: { attempt: Attempt; expectedWorkItemRevision: number }): Promise<{ workItem: WorkItem; attempt: Attempt }> {
+  public async startAttempt(input: { attempt: NewAttempt; expectedWorkItemRevision: number }): Promise<{ workItem: WorkItem; attempt: Attempt }> {
     return this.prisma.$transaction(async (tx) => {
       const work = await tx.workItem.findUniqueOrThrow({ where: { id: input.attempt.workItemId } });
       if (work.revision !== input.expectedWorkItemRevision) throw new WorkItemRevisionConflictError(work.id, input.expectedWorkItemRevision);
@@ -80,11 +81,19 @@ export class WorkStore {
       });
       if (count === 0) throw new WorkItemRevisionConflictError(work.id, input.expectedWorkItemRevision);
 
+      // F-011: Allocate durable attempt number inside the authoritative transaction.
+      // MAX(attempt_number) + 1 ensures monotonic ordering, gap-tolerant, restart-safe.
+      const maxResult = await tx.attempt.aggregate({
+        where: { workItemId: work.id },
+        _max: { attemptNumber: true },
+      });
+      const nextAttemptNumber = (maxResult._max.attemptNumber ?? 0) + 1;
+
       const createdAttempt = await tx.attempt.create({ data: {
         id: input.attempt.id,
         projectId: input.attempt.projectId,
         workItemId: input.attempt.workItemId,
-        attemptNumber: input.attempt.attemptNumber,
+        attemptNumber: nextAttemptNumber,
         state: input.attempt.state,
         active: isActiveAttemptState(input.attempt.state),
         workPackageVersion: input.attempt.workPackageVersion,
