@@ -13,6 +13,15 @@ const adapterA = new PrismaPg(poolA);
 const prismaA = new PrismaClient({ adapter: adapterA });
 
 async function clearDatabase(prisma: PrismaClient): Promise<void> {
+  await prisma.incidentEventRecord.deleteMany();
+  await prisma.executionLogRecord.deleteMany();
+  await prisma.verificationRecord.deleteMany();
+  await prisma.evidenceRecord.deleteMany();
+  await prisma.artifactRecord.deleteMany();
+  await prisma.completionDecision.deleteMany();
+  await prisma.approval.deleteMany();
+  await prisma.attempt.deleteMany();
+  await prisma.workItem.deleteMany();
   await prisma.outboxEvent.deleteMany();
   await prisma.projectEvent.deleteMany();
   await prisma.project.deleteMany();

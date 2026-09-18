@@ -274,8 +274,15 @@ describe('P6 — Approval Authority Subsystem', () => {
   });
 
   beforeAll(async () => {
+    await prisma.incidentEventRecord.deleteMany();
+    await prisma.executionLogRecord.deleteMany();
+    await prisma.verificationRecord.deleteMany();
+    await prisma.evidenceRecord.deleteMany();
+    await prisma.artifactRecord.deleteMany();
+    await prisma.completionDecision.deleteMany();
     await prisma.approvalAuditEvent.deleteMany();
     await prisma.approval.deleteMany();
+    await prisma.attempt.deleteMany();
     await prisma.workItem.deleteMany();
     await prisma.project.deleteMany();
 
