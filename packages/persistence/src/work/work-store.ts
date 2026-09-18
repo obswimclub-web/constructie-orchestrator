@@ -28,6 +28,14 @@ export class ActiveAttemptExistsError extends Error {
   }
 }
 
+export class AttemptStateConflictError extends Error {
+  public readonly code = "ATTEMPT_STATE_CONFLICT";
+  public constructor(public readonly attemptId: string, public readonly expectedState: string) {
+    super(`Attempt ${attemptId} is no longer in expected state ${expectedState}.`);
+    this.name = "AttemptStateConflictError";
+  }
+}
+
 function mapWorkItem(row: unknown): WorkItem { return row as WorkItem; }
 function mapAttempt(row: unknown): Attempt { return row as Attempt; }
 
@@ -130,7 +138,8 @@ export class WorkStore {
   public async transitionAttempt(input: { attemptId: string; to: AttemptState }): Promise<Attempt> {
     return this.prisma.$transaction(async (tx) => {
       const current = await tx.attempt.findUniqueOrThrow({ where: { id: input.attemptId } });
-      assertAttemptTransition(current.state as AttemptState, input.to);
+      const fromState = current.state as AttemptState;
+      assertAttemptTransition(fromState, input.to);
       const active = isActiveAttemptState(input.to);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const updateData: any = {
@@ -141,7 +150,19 @@ export class WorkStore {
       if (input.to === "RUNNING" && current.startedAt === null) {
         updateData.startedAt = new Date();
       }
-      const row = await tx.attempt.update({ where: { id: input.attemptId }, data: updateData });
+      // F-014: CAS — bind validated source state in UPDATE predicate.
+      // Under READ COMMITTED, the second concurrent writer re-evaluates
+      // the WHERE after acquiring the row lock. If the first writer
+      // already changed `state`, the predicate no longer matches and
+      // updateMany returns count=0.
+      const { count } = await tx.attempt.updateMany({
+        where: { id: input.attemptId, state: fromState },
+        data: updateData,
+      });
+      if (count === 0) {
+        throw new AttemptStateConflictError(input.attemptId, fromState);
+      }
+      const row = await tx.attempt.findUniqueOrThrow({ where: { id: input.attemptId } });
       if (!active) {
         await tx.workItem.updateMany({ where: { id: current.workItemId, currentAttemptId: current.id }, data: { currentAttemptId: null } });
       }
