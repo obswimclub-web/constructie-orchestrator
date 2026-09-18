@@ -36,11 +36,16 @@ describe('P12-R57 Evidence & Project Binding Repair (Real E2E)', () => {
 
   afterAll(async () => {
     if (workerHost) await workerHost.stop();
-    await prisma.attempt.deleteMany({ where: { workItemId } });
-    await prisma.evidenceRecord.deleteMany({ where: { workItemId } });
-    await prisma.artifactRecord.deleteMany({ where: { workItemId } });
-
     if (projectId) {
+      await prisma.incidentEventRecord.deleteMany({ where: { projectId } });
+      await prisma.executionLogRecord.deleteMany({ where: { projectId } });
+      await prisma.verificationRecord.deleteMany({ where: { projectId } });
+      await prisma.evidenceRecord.deleteMany({ where: { projectId } });
+      await prisma.artifactRecord.deleteMany({ where: { projectId } });
+      await prisma.completionDecision.deleteMany({ where: { projectId } });
+      await prisma.approvalAuditEvent.deleteMany();
+      await prisma.approval.deleteMany({ where: { projectId } });
+      await prisma.attempt.deleteMany({ where: { projectId } });
       await prisma.workItem.deleteMany({ where: { projectId } });
       await prisma.projectEvent.deleteMany({ where: { projectId } });
       await prisma.outboxEvent.deleteMany({ where: { projectId } });

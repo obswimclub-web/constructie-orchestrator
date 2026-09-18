@@ -39,15 +39,19 @@ describe('P9-S2A — Durable Evidence Lineage Persistence & Isolation', () => {
   beforeEach(async () => {
     store = new PrismaEvidenceStore(prisma);
     workStore = new WorkStore(prisma);
-    await prisma.completionDecision.deleteMany();
+    await prisma.incidentEventRecord.deleteMany();
+    await prisma.executionLogRecord.deleteMany();
     await prisma.verificationRecord.deleteMany();
     await prisma.evidenceRecord.deleteMany();
     await prisma.artifactRecord.deleteMany();
+    await prisma.completionDecision.deleteMany();
+    await prisma.approval.deleteMany();
     await prisma.attempt.deleteMany();
     await prisma.workItem.deleteMany();
     await prisma.projectEvent.deleteMany();
     await prisma.outboxEvent.deleteMany();
     await prisma.project.deleteMany();
+
   });
 
   afterAll(async () => {
@@ -68,6 +72,47 @@ describe('P9-S2A — Durable Evidence Lineage Persistence & Isolation', () => {
     await prisma.project.create({ data: { id: project.id, slug: project.slug, name: project.name, createdAt: now, updatedAt: now } });
     const workItem = createWorkItem({ id: workItemId, projectId, type: 'TASK', objective: 'Test Lineage', now });
     await workStore.createWorkItem(workItem);
+    await prisma.attempt.create({
+      data: {
+        id: attemptId,
+        projectId,
+        workItemId,
+        attemptNumber: 1,
+        workPackageVersion: 1,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+
+    await prisma.approval.create({
+      data: {
+        id: approvalId,
+        projectId,
+        workItemId,
+        attemptId,
+        gateKind: 'TEST_GATE',
+        status: 'PENDING',
+        scope: {},
+        evidenceRefs: [],
+      }
+    });
+
+    await prisma.completionDecision.create({
+      data: {
+        id: completionDecisionId,
+        projectId,
+        completionObjectRef: 'ref',
+        state: 'APPROVED',
+        evaluatedProjectRevision: 1,
+        evaluatedWorkItemId: workItemId,
+        evaluatedWorkItemRevision: 1,
+        verificationIds: [],
+        evidenceIds: [],
+        reconciliationRef: 'ref',
+        rationaleCodes: [],
+        decidedAt: now,
+      }
+    });
 
     // 1. ArtifactRecord with lineage
     const artifactInput: ArtifactRecord = {
@@ -648,6 +693,46 @@ describe('P9-S2A — Durable Evidence Lineage Persistence & Isolation', () => {
     await prisma.project.create({ data: { id: project.id, slug: project.slug, name: project.name, createdAt: now, updatedAt: now } });
     const workItem = createWorkItem({ id: workItemId, projectId, type: 'TASK', objective: 'Reconnect Test', now });
     await workStore.createWorkItem(workItem);
+    await prisma.attempt.create({
+      data: {
+        id: attemptId,
+        projectId,
+        workItemId,
+        attemptNumber: 1,
+        workPackageVersion: 1,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+    await prisma.approval.create({
+      data: {
+        id: approvalId,
+        projectId,
+        workItemId,
+        attemptId,
+        gateKind: 'TEST_GATE',
+        status: 'PENDING',
+        scope: {},
+        evidenceRefs: [],
+      }
+    });
+
+    await prisma.completionDecision.create({
+      data: {
+        id: completionDecisionId,
+        projectId,
+        completionObjectRef: 'ref-reconnect',
+        state: 'APPROVED',
+        evaluatedProjectRevision: 1,
+        evaluatedWorkItemId: workItemId,
+        evaluatedWorkItemRevision: 1,
+        verificationIds: [],
+        evidenceIds: [],
+        reconciliationRef: 'ref',
+        rationaleCodes: [],
+        decidedAt: now,
+      }
+    });
 
     const artifactId = randomUUID();
     await store.saveArtifact({

@@ -1,6 +1,5 @@
 generator client {
   provider = "prisma-client-js"
-
 }
 
 datasource db {
@@ -16,9 +15,17 @@ model Project {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  events    ProjectEvent[]
-  workItems WorkItem[]
-  attempts  Attempt[]
+  events               ProjectEvent[]
+  workItems            WorkItem[]
+  attempts             Attempt[]
+  outboxEvents         OutboxEvent[]
+  artifactRecords      ArtifactRecord[]
+  evidenceRecords      EvidenceRecord[]
+  verificationRecords  VerificationRecord[]
+  completionDecisions  CompletionDecision[]
+  approvals            Approval[]
+  executionLogRecords  ExecutionLogRecord[]
+  incidentEventRecords IncidentEventRecord[]
 
   @@map("projects")
 }
@@ -48,18 +55,20 @@ model ProjectEvent {
 }
 
 model OutboxEvent {
-  id            String   @id @db.Uuid
-  projectId     String   @map("project_id") @db.Uuid
-  eventType     String   @map("event_type")
-  aggregateType String   @map("aggregate_type")
-  aggregateId   String   @map("aggregate_id") @db.Uuid
+  id            String    @id @db.Uuid
+  projectId     String    @map("project_id") @db.Uuid
+  eventType     String    @map("event_type")
+  aggregateType String    @map("aggregate_type")
+  aggregateId   String    @map("aggregate_id") @db.Uuid
   payload       Json
-  correlationId String   @map("correlation_id")
-  status        String   @default("PENDING")
-  availableAt   DateTime @default(now()) @map("available_at")
-  createdAt     DateTime @default(now()) @map("created_at")
+  correlationId String    @map("correlation_id")
+  status        String    @default("PENDING")
+  availableAt   DateTime  @default(now()) @map("available_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
   publishedAt   DateTime? @map("published_at")
-  attempts      Int      @default(0)
+  attempts      Int       @default(0)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([status, availableAt])
   @@index([projectId])
@@ -67,20 +76,29 @@ model OutboxEvent {
 }
 
 model WorkItem {
-  evidenceRequirements Json @default("[\"AGENT_RESULT_VERIFICATION\"]") @map("evidence_requirements")
-  id               String   @id @db.Uuid
-  projectId        String   @map("project_id") @db.Uuid
-  parentId         String?  @map("parent_id") @db.Uuid
-  type             String
-  objective        String
-  lifecycleState   String   @default("DRAFT") @map("lifecycle_state")
-  revision         Int      @default(1)
-  currentAttemptId String?  @map("current_attempt_id") @db.Uuid
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  evidenceRequirements Json     @default("[\"AGENT_RESULT_VERIFICATION\"]") @map("evidence_requirements")
+  id                   String   @id @db.Uuid
+  projectId            String   @map("project_id") @db.Uuid
+  parentId             String?  @map("parent_id") @db.Uuid
+  type                 String
+  objective            String
+  lifecycleState       String   @default("DRAFT") @map("lifecycle_state")
+  revision             Int      @default(1)
+  currentAttemptId     String?  @map("current_attempt_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
-  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  attempts Attempt[]
+  project              Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent               WorkItem?             @relation("WorkItemHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children             WorkItem[]            @relation("WorkItemHierarchy")
+  attempts             Attempt[]
+  artifactRecords      ArtifactRecord[]
+  evidenceRecords      EvidenceRecord[]
+  verificationRecords  VerificationRecord[]
+  completionDecisions  CompletionDecision[]
+  approvals            Approval[]
+  executionLogRecords  ExecutionLogRecord[]
+  incidentEventRecords IncidentEventRecord[]
 
   @@index([projectId, lifecycleState])
   @@index([parentId])
@@ -88,22 +106,28 @@ model WorkItem {
 }
 
 model Attempt {
-  id                 String   @id @db.Uuid
-  projectId          String   @map("project_id") @db.Uuid
-  workItemId         String   @map("work_item_id") @db.Uuid
-  attemptNumber      Int      @map("attempt_number")
-  state              String   @default("NOT_STARTED")
-  active             Boolean  @default(true)
-  workPackageVersion Int      @map("work_package_version")
+  id                 String    @id @db.Uuid
+  projectId          String    @map("project_id") @db.Uuid
+  workItemId         String    @map("work_item_id") @db.Uuid
+  attemptNumber      Int       @map("attempt_number")
+  state              String    @default("NOT_STARTED")
+  active             Boolean   @default(true)
+  workPackageVersion Int       @map("work_package_version")
   agentRunId         String?   @map("agent_run_id")
   agentAdapterId     String?   @map("agent_adapter_id")
   startedAt          DateTime? @map("started_at")
   endedAt            DateTime? @map("ended_at")
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  workItem WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  project              Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workItem             WorkItem              @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  artifactRecords      ArtifactRecord[]
+  evidenceRecords      EvidenceRecord[]
+  verificationRecords  VerificationRecord[]
+  approvals            Approval[]
+  executionLogRecords  ExecutionLogRecord[]
+  incidentEventRecords IncidentEventRecord[]
 
   @@unique([workItemId, attemptNumber])
   @@index([projectId, state])
@@ -123,6 +147,11 @@ model ArtifactRecord {
   producedBy String   @map("produced_by")
   digest     String?  @map("digest")
   createdAt  DateTime @default(now()) @map("created_at")
+
+  project  Project          @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  workItem WorkItem         @relation(fields: [workItemId], references: [id], onDelete: Restrict)
+  attempt  Attempt?         @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+  evidence EvidenceRecord[]
 
   @@index([projectId, workItemId])
   @@index([projectId, runId])
@@ -147,6 +176,12 @@ model EvidenceRecord {
   digest        String?  @map("digest")
   observedAt    DateTime @map("observed_at")
   createdAt     DateTime @default(now()) @map("created_at")
+
+  project  Project         @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  workItem WorkItem        @relation(fields: [workItemId], references: [id], onDelete: Restrict)
+  attempt  Attempt?        @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+  artifact ArtifactRecord? @relation(fields: [artifactId], references: [id], onDelete: Restrict)
+  approval Approval?       @relation(fields: [approvalId], references: [id], onDelete: Restrict)
 
   @@index([projectId, workItemId, currentness])
   @@index([projectId, runId])
@@ -173,6 +208,11 @@ model VerificationRecord {
   verifiedAt           DateTime @map("verified_at")
   createdAt            DateTime @default(now()) @map("created_at")
 
+  project            Project             @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  workItem           WorkItem            @relation(fields: [workItemId], references: [id], onDelete: Restrict)
+  attempt            Attempt?            @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+  completionDecision CompletionDecision? @relation(fields: [completionDecisionId], references: [id], onDelete: Restrict)
+
   @@index([projectId, workItemId, status])
   @@index([projectId, runId])
   @@index([completionDecisionId])
@@ -193,6 +233,10 @@ model CompletionDecision {
   rationaleCodes            Json     @map("rationale_codes")
   decidedAt                 DateTime @map("decided_at")
   createdAt                 DateTime @default(now()) @map("created_at")
+
+  project           Project              @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  evaluatedWorkItem WorkItem             @relation(fields: [evaluatedWorkItemId], references: [id], onDelete: Restrict)
+  verifications     VerificationRecord[]
 
   @@index([projectId, completionObjectRef, decidedAt])
   @@index([projectId, state])
@@ -217,7 +261,11 @@ model Approval {
   consumedAt             DateTime? @map("consumed_at")
   postActionVerification Json?     @map("post_action_verification")
 
+  project     Project              @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  workItem    WorkItem?            @relation(fields: [workItemId], references: [id], onDelete: Restrict)
+  attempt     Attempt?             @relation(fields: [attemptId], references: [id], onDelete: SetNull)
   auditEvents ApprovalAuditEvent[]
+  evidence    EvidenceRecord[]
 
   @@index([projectId, status])
   @@index([workItemId])
@@ -253,6 +301,10 @@ model ExecutionLogRecord {
   hash         String
   createdAt    DateTime @default(now()) @map("created_at")
 
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  attempt  Attempt?  @relation(fields: [attemptId], references: [id], onDelete: Restrict)
+  workItem WorkItem? @relation(fields: [workItemId], references: [id], onDelete: Restrict)
+
   @@index([projectId, runId, sequence])
   @@index([projectId, attemptId])
   @@map("execution_log_records")
@@ -275,6 +327,10 @@ model IncidentEventRecord {
   hash               String
   sequence           Int
   createdAt          DateTime @default(now()) @map("created_at")
+
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  attempt  Attempt?  @relation(fields: [attemptId], references: [id], onDelete: Restrict)
+  workItem WorkItem? @relation(fields: [workItemId], references: [id], onDelete: Restrict)
 
   @@index([projectId, incidentId, sequence])
   @@index([projectId, runId])
